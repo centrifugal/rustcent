@@ -1,0 +1,14 @@
+[default.extend-words]
+# Filter operator "not in" (api.proto).
+nin = "nin"
+# A base64 test vector.
+fo = "fo"
+
+[files]
+extend-exclude = [
+  # Upstream protos and the code generated from them.
+  "proto/",
+  "crates/cent/src/generated/",
+  "crates/cent/tests/methods.rs",
+  "crates/cent/tests/testdata/",
+]

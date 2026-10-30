@@ -1,0 +1,3 @@
+# Generated from the protos by `cargo xtask generate`: collapsed in diffs.
+crates/cent/src/generated/** linguist-generated=true
+crates/cent/tests/methods.rs linguist-generated=true

@@ -1,0 +1,80 @@
+[package]
+name = "cent"
+description = "Centrifugo server API SDK: every API method, batches, broadcasts with retries, tokens, proxy handlers"
+documentation = "https://docs.rs/cent"
+readme = "../../README.md"
+keywords = ["centrifugo", "realtime", "pubsub", "websocket", "api"]
+categories = ["api-bindings", "web-programming", "asynchronous"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+include = ["/src", "/examples", "/README.md", "/LICENSE"]
+
+[dependencies]
+bytes = "1.10"
+http = "1.3"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.140", features = ["raw_value"] }
+base64 = "0.22.1"
+
+aws-lc-rs = { version = "1.13", optional = true }
+http-body = { version = "1.0.1", optional = true }
+http-body-util = { version = "0.1.3", optional = true }
+hyper = { version = "1.6", default-features = false, features = ["client", "http1", "http2"], optional = true }
+hyper-rustls = { version = "0.27.7", default-features = false, features = ["http1", "http2", "tls12", "aws-lc-rs", "rustls-platform-verifier"], optional = true }
+hyper-util = { version = "0.1.14", default-features = false, features = ["client-legacy", "tokio", "http1", "http2"], optional = true }
+rustls = { version = "0.23.31", default-features = false, features = ["std", "tls12", "aws_lc_rs"], optional = true }
+rustls-platform-verifier = { version = "0.7.1", optional = true }
+rustls-pki-types = { version = "1.12", features = ["std"], optional = true }
+tokio = { version = "1.49", features = ["rt", "sync", "time"], optional = true }
+tower-service = { version = "0.3.3", optional = true }
+
+[dev-dependencies]
+axum = { version = "0.8.4", default-features = false, features = ["http1", "tokio"] }
+http-body-util = "0.1.3"
+hyper = { version = "1.6", features = ["server", "http1"] }
+hyper-util = { version = "0.1.14", features = ["server", "tokio", "http1"] }
+proptest = "1.7"
+rustls = { version = "0.23.31", default-features = false, features = ["std", "aws_lc_rs"] }
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["aws_lc_rs"] }
+tower-service = "0.3.3"
+serde = { version = "1.0.219", features = ["derive"] }
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "time", "net", "io-util", "test-util"] }
+
+[features]
+default = ["client", "token"]
+# The async `Client` on tokio, with hyper and rustls (the OS trust store).
+client = ["dep:tokio", "dep:hyper", "dep:hyper-util", "dep:hyper-rustls", "dep:rustls", "dep:rustls-platform-verifier", "dep:http-body-util", "dep:aws-lc-rs"]
+# `blocking::Client`, for code without an async runtime.
+blocking = ["client", "tokio/rt-multi-thread"]
+# Connection, subscription and API tokens, JWKS, shared poll signatures.
+token = ["dep:aws-lc-rs", "dep:rustls-pki-types"]
+# `tower::Service` for the HTTP handlers, for axum, hyper and tower stacks.
+tower = ["dep:tower-service", "dep:http-body", "dep:http-body-util"]
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+
+[[example]]
+name = "publish"
+required-features = ["client"]
+
+[[example]]
+name = "blocking"
+required-features = ["blocking"]
+
+[[example]]
+name = "backend"
+required-features = ["token", "tower"]
+
+[[example]]
+name = "stream"
+required-features = ["client"]

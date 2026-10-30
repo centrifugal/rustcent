@@ -1,0 +1,125 @@
+# Publishes a release when a maintainer pushes a `vX.Y.Z` tag (CONTRIBUTING.md,
+# "Releases"). The version in Cargo.toml is bumped beforehand in a normal
+# commit on main.
+#
+# 1. Checks the tag: it names the crate's version, points at a commit on main,
+#    and that commit passed CI.
+# 2. Checks the version bump against the API change (cargo-semver-checks,
+#    against the latest version on crates.io).
+# 3. Publishes the crate to crates.io through trusted publishing (OIDC, no
+#    token secret). A version already on crates.io is skipped, so a rerun
+#    after a failure, or a tag pushed after a manual first publish, completes
+#    the release.
+# 4. Creates the GitHub release with generated notes (the PRs merged since the
+#    previous tag), unless the maintainer already created it.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish
+    if: github.repository_owner == 'centrifugal'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write  # the GitHub release
+      checks: read     # the tagged commit's CI result
+      id-token: write  # crates.io trusted publishing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # No build cache here: a poisoned cache must not reach a published crate.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+
+      - name: Check the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          version=$(cargo metadata --no-deps --format-version 1 --locked \
+            | jq -r '.packages[] | select(.name == "cent") | .version')
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but cent is $version"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_SHA is not on main"
+            exit 1
+          fi
+          ci=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=CI%20success" \
+            --jq '[.check_runs[].conclusion] | first // "missing"')
+          if [ "$ci" != "success" ]; then
+            echo "::error::CI on $GITHUB_SHA: $ci (wait for CI to pass on main, then rerun)"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Find whether it is published
+        id: todo
+        run: |
+          set -eu
+          status() {
+            curl -s -o /dev/null -w '%{http_code}' \
+              -A "rustcent-release (https://github.com/centrifugal/rustcent)" \
+              "https://crates.io/api/v1/crates/$1"
+          }
+          publish=false
+          case "$(status "cent/$VERSION")" in
+            200) echo "cent $VERSION is already on crates.io" ;;
+            404) publish=true ;;
+            *) echo "::error::crates.io lookup of cent $VERSION failed"; exit 1 ;;
+          esac
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          # Check the bump only for a new version with a previous release to
+          # compare against (none before 0.1.0).
+          semver=false
+          if [ "$publish" = true ]; then
+            case "$(status cent)" in
+              200) semver=true ;;
+              404) ;;
+              *) echo "::error::crates.io lookup of cent failed"; exit 1 ;;
+            esac
+          fi
+          echo "semver=$semver" >> "$GITHUB_OUTPUT"
+
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        if: steps.todo.outputs.semver == 'true'
+        with:
+          tool: cargo-semver-checks
+      - name: Check the version bump
+        if: steps.todo.outputs.semver == 'true'
+        run: cargo semver-checks --package cent
+
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+        if: steps.todo.outputs.publish == 'true'
+        id: auth
+
+      - name: Publish to crates.io
+        if: steps.todo.outputs.publish == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked -p cent
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME exists"
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+          fi

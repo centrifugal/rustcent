@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use cent::Expiry;
-use cent::endpoints::{self, Unauthorized};
+use cent::endpoints::{self, Forbidden};
 use cent::proxy::{self, Rejection};
 use cent::token::{self, ConnectionClaims, Key};
 
@@ -73,7 +73,7 @@ async fn main() -> Result<(), cent::BoxError> {
             // The user your authentication found: a header set by a proxy in
             // front, for the example.
             let Some(user) = parts.headers.get("x-user").and_then(|v| v.to_str().ok()) else {
-                return Err(Unauthorized.into()); // 403: the client stops asking
+                return Err(Forbidden.into()); // 403: the client stops asking
             };
             let key = keys.current(SystemTime::now()).ok_or("no key active yet")?;
             let claims = ConnectionClaims::new(user, Expiry::after(Duration::from_secs(3600)));

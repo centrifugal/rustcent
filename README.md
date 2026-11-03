@@ -510,7 +510,7 @@ HMAC, RSA, ECDSA or Ed25519 - and `cent::endpoints` serves the endpoints the
 
 ```rust
 use std::time::Duration;
-use cent::endpoints::{self, Unauthorized};
+use cent::endpoints::{self, Forbidden};
 use cent::token::{self, ConnectionClaims, Key};
 
 let key = Key::hmac("secret")?; // client.token.hmac_secret_key
@@ -518,7 +518,7 @@ let connection_token = endpoints::Handlers::new().connection_token(move |parts| 
     let key = key.clone();
     async move {
         let Some(user) = parts.extensions.get::<String>() else {
-            return Err(Unauthorized.into()); // 403: the client stops asking
+            return Err(Forbidden.into()); // 403: the client stops asking
         };
         let claims = ConnectionClaims::new(user, cent::Expiry::after(Duration::from_secs(3600)));
         Ok(token::connection(&key, &claims)?)
@@ -526,6 +526,11 @@ let connection_token = endpoints::Handlers::new().connection_token(move |parts| 
 });
 # Ok::<(), cent::token::TokenError>(())
 ```
+
+`endpoints::Forbidden`, also inside another error, answers 403: client SDKs
+stop asking, and report it as their `UnauthorizedError`. It is not the API
+client's `err.is_unauthorized()`, which means Centrifugo refused this
+backend's credentials. Any other error answers 500, which client SDKs retry.
 
 An expiry is required: `Expiry::At(time)`, or `Expiry::Never` for a token
 accepted forever, chosen explicitly. A connection token's `meta` is never shown

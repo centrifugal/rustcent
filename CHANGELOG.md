@@ -54,6 +54,11 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
 - An automatic batch request lasts until the latest of its calls' deadlines,
   and at least `request_timeout` from when it is sent, as before: it may
   outlast a call's deadline, which the docs now say.
+- **Breaking:** `endpoints::Unauthorized` is renamed `endpoints::Forbidden`:
+  the 403 of the token and shared poll endpoints, which client SDKs report
+  as their `UnauthorizedError`. The old name read like the API client's
+  `Error::is_unauthorized` - Centrifugo refusing this backend's credentials
+  - with the opposite meaning. Its `Display` is `forbidden`.
 - The `User-Agent` is `rustcent/0.2`.
 - The new fields of `proxy::ConnectResult`, `token::ConnectionClaims` and
   `token::SubscriptionClaims` are on `#[non_exhaustive]` structs, built with

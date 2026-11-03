@@ -45,7 +45,8 @@ fn claims_in_order() {
         .issuer("i")
         .info(info)
         .channels(["news"])
-        .labels([("region", "eu")]);
+        .labels([("region", "eu")])
+        .profile("chat");
     let jwt = connection(&key, &c).unwrap();
     let (header, claims) = claims_of(&jwt);
     assert_eq!(
@@ -60,9 +61,27 @@ fn claims_in_order() {
     .unwrap();
     assert_eq!(
         text,
-        r#"{"sub":"","iat":1,"jti":"t1","aud":"a","iss":"i","expire_at":0,"info":{"name":"Alice"},"channels":["news"],"labels":{"region":"eu"}}"#
+        r#"{"sub":"","iat":1,"jti":"t1","aud":"a","iss":"i","expire_at":0,"info":{"name":"Alice"},"channels":["news"],"labels":{"region":"eu"},"profile":"chat"}"#
     );
     assert!(claims.get("exp").is_none(), "never expiring: no exp");
+
+    // A subscription token's client follows its channel (spec 15.1).
+    let s = SubscriptionClaims::new("42", "news", Expiry::At(at(2)))
+        .client("c1")
+        .issued_at(at(1))
+        .subscription_expiry(Expiry::Never)
+        .allow(["pub"]);
+    let jwt = subscription(&key, &s).unwrap();
+    let text = String::from_utf8(
+        URL_SAFE_NO_PAD
+            .decode(jwt.split('.').nth(1).unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        text,
+        r#"{"sub":"42","exp":2,"iat":1,"channel":"news","client":"c1","expire_at":0,"allow":["pub"]}"#
+    );
 }
 
 #[test]

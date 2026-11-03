@@ -132,6 +132,9 @@ pub struct ConnectionClaims {
     /// The connection's client labels: immutable, for metrics, targeted
     /// server API calls and CEL expressions. Centrifugo PRO only.
     pub labels: BTreeMap<String, String>,
+    /// The connection's dictionary compression profile: the `profile` claim,
+    /// overriding the one the client declared. Centrifugo PRO only.
+    pub profile: String,
 }
 
 impl ConnectionClaims {
@@ -153,6 +156,7 @@ impl ConnectionClaims {
             meta: None,
             caps: Vec::new(),
             labels: BTreeMap::new(),
+            profile: String::new(),
         }
     }
 
@@ -246,6 +250,13 @@ impl ConnectionClaims {
             .into_iter()
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
+        self
+    }
+
+    /// Sets [`profile`](Self::profile).
+    #[must_use]
+    pub fn profile(mut self, profile: impl Into<String>) -> Self {
+        self.profile = profile.into();
         self
     }
 }
@@ -362,6 +373,13 @@ pub struct SubscriptionClaims {
     pub user: String,
     /// The channel the token allows to subscribe to.
     pub channel: String,
+    /// Binds the token to one connection: the `client` claim, the client ID
+    /// Centrifugo gave it. A subscribe or subscription refresh from any other
+    /// connection is refused, so a token which leaks cannot be used
+    /// elsewhere - for a token made for one connection, whose client ID the
+    /// application knows. Empty leaves the token usable by any connection of
+    /// [`user`](Self::user).
+    pub client: String,
     /// Until when the token is accepted: `exp`, left out for [`Expiry::Never`].
     /// The subscription expires then too, unless
     /// [`subscription_expiry`](Self::subscription_expiry) says otherwise.
@@ -405,6 +423,7 @@ impl SubscriptionClaims {
         Self {
             user: user.into(),
             channel: channel.into(),
+            client: String::new(),
             expiry,
             subscription_expiry: None,
             issued_at: None,
@@ -419,6 +438,13 @@ impl SubscriptionClaims {
             allow: Vec::new(),
             server_tags_filter: None,
         }
+    }
+
+    /// Sets [`client`](Self::client).
+    #[must_use]
+    pub fn client(mut self, client: impl Into<String>) -> Self {
+        self.client = client.into();
+        self
     }
 
     /// Sets [`subscription_expiry`](Self::subscription_expiry).
@@ -577,6 +603,8 @@ struct ConnectionWire<'a> {
     caps: &'a [ChannelsCapability],
     #[serde(skip_serializing_if = "empty_map")]
     labels: &'a BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "empty_str")]
+    profile: &'a str,
 }
 
 #[derive(Serialize)]
@@ -584,6 +612,8 @@ struct SubscriptionWire<'a> {
     #[serde(flatten)]
     registered: Registered<'a>,
     channel: &'a str,
+    #[serde(skip_serializing_if = "empty_str")]
+    client: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     expire_at: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -628,6 +658,7 @@ pub fn connection(key: &Key, c: &ConnectionClaims) -> Result<String, TokenError>
             meta: c.meta.as_deref(),
             caps: &c.caps,
             labels: &c.labels,
+            profile: &c.profile,
         },
     )
 }
@@ -649,6 +680,7 @@ pub fn subscription(key: &Key, c: &SubscriptionClaims) -> Result<String, TokenEr
                 &c.issuer,
             )?,
             channel: &c.channel,
+            client: &c.client,
             expire_at: expire_at(c.subscription_expiry)?,
             info: c.info.as_deref(),
             b64info: &c.b64info,

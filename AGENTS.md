@@ -13,6 +13,7 @@ correct under concurrency and hard to misuse. Read this before changing code.
 |---|---|
 | `proto/api.proto`, `proto/proxy.proto` | Copies of Centrifugo's protos, from a released tag (`cargo xtask sync-proto v6.10.2`) |
 | `xtask/` | The generator: `proto.rs` parses the protos, `generate.rs` writes the code - the types, the constants of the fields whose comment says `One of: ...`, the docs of the presence wrappers - and its tests pin what it reads from the comments |
+| `xtask/constants_api.txt`, `xtask/constants_proxy.txt` | The names of the constants, as the spec's table in section 3.3 pins them: `Message.field Name`, or `*.field Name`. Generation fails on a "One of:" field a list lacks, a pin no field uses, and one name over different values: name a new field in the spec's table, then here |
 | `xtask/required_fields.txt` | The fields the protos mark "Required.", made required arguments of `new` - the reviewed list the other SDKs share. Generation fails when the protos' list differs |
 | `xtask/constructors.txt` | The constructors with several required arguments, in the protos' field order. Generation fails when one changes: a proto reordering two fields of one type would swap what callers pass without a compile error |
 | `crates/cent/src/generated/` | Generated - never edited: request and result types with their constructors and setters, the client, batch, command and blocking client methods, the proxy types |
@@ -135,9 +136,11 @@ rest of what CI runs.
 - **The constants are `&str` consts, the fields `String`s**, not enums:
   Centrifugo adds values, and one without a constant must still be
   sendable. API constants are at the crate's root, proxy ones in
-  `cent::proxy` - each proto named apart, so `FilterNode`'s `op` is
-  `FILTER_NODE_OP_AND` in the API, where topic updates also have an `op`,
-  and `proxy::OP_AND` in the proxy.
+  `cent::proxy`. Their names are the spec's pinned table (section 3.3),
+  held in `xtask/constants_api.txt` and `xtask/constants_proxy.txt`, not
+  derived from the protos: the same field has the same name in both protos
+  (`FILTER_NODE_OP_AND`, `proxy::FILTER_NODE_OP_AND`), and a message added
+  upstream never renames one.
 - **Maps are `BTreeMap`**: requests encode the same way every time.
 - **`RPCRequest` is `RpcRequest`** in Rust, as Rust names acronyms; the wire
   names do not change.

@@ -176,9 +176,8 @@ mod tests {
     }
 
     /// Each constant generated from a "One of:" sentence is its value, named
-    /// by field and value, with `FilterNode`'s `op` named by its message in
-    /// the API, where the topic updates' `op` is listed in more messages
-    /// (spec 3.3).
+    /// by the name the spec pins for its field and the value - the same in
+    /// both protos, as `FILTER_NODE_OP_AND` (spec 3.3).
     #[test]
     fn constants_are_their_values() {
         use crate::proxy;
@@ -215,9 +214,9 @@ mod tests {
             (crate::KEY_MODE_IF_EXISTS, "if_exists"),
         ];
         let proxy = [
-            (proxy::OP_AND, "and"),
-            (proxy::OP_OR, "or"),
-            (proxy::OP_NOT, "not"),
+            (proxy::FILTER_NODE_OP_AND, "and"),
+            (proxy::FILTER_NODE_OP_OR, "or"),
+            (proxy::FILTER_NODE_OP_NOT, "not"),
             (proxy::CMP_EQ, "eq"),
             (proxy::CMP_LTE, "lte"),
             (proxy::PROTOCOL_JSON, "json"),
@@ -228,12 +227,12 @@ mod tests {
             (proxy::ALLOW_PUB, "pub"),
             (proxy::ALLOW_HST, "hst"),
             (proxy::ALLOW_PRS, "prs"),
-            (proxy::MATCH_WILDCARD, "wildcard"),
-            (proxy::MATCH_REGEX, "regex"),
+            (proxy::CAPABILITY_MATCH_WILDCARD, "wildcard"),
+            (proxy::CAPABILITY_MATCH_REGEX, "regex"),
             (proxy::KEY_MODE_IF_NEW, "if_new"),
             (proxy::KEY_MODE_IF_EXISTS, "if_exists"),
-            (proxy::TYPE_OCCUPIED, "occupied"),
-            (proxy::TYPE_VACATED, "vacated"),
+            (proxy::CHANNEL_EVENT_TYPE_OCCUPIED, "occupied"),
+            (proxy::CHANNEL_EVENT_TYPE_VACATED, "vacated"),
         ];
         for (constant, value) in api.into_iter().chain(proxy) {
             assert_eq!(constant, value);

@@ -7142,123 +7142,123 @@ impl crate::wire::Empty for SharedPollPublishResult {
     }
 }
 
-/// `"and"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
+/// `"and"`, a value of `op` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const FILTER_NODE_OP_AND: &str = "and";
 
-/// `"or"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
+/// `"or"`, a value of `op` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const FILTER_NODE_OP_OR: &str = "or";
 
-/// `"not"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
+/// `"not"`, a value of `op` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const FILTER_NODE_OP_NOT: &str = "not";
 
-/// `"add"`, a value of the `op` field of [`DeviceTopicsUpdate`], [`DeviceTopicUpdateRequest`] and [`UserTopicUpdateRequest`]. The field is a string: a value
-/// Centrifugo accepts which no constant names can still be sent.
-pub const OP_ADD: &str = "add";
-
-/// `"remove"`, a value of the `op` field of [`DeviceTopicsUpdate`], [`DeviceTopicUpdateRequest`] and [`UserTopicUpdateRequest`]. The field is a string: a value
-/// Centrifugo accepts which no constant names can still be sent.
-pub const OP_REMOVE: &str = "remove";
-
-/// `"set"`, a value of the `op` field of [`DeviceTopicsUpdate`], [`DeviceTopicUpdateRequest`] and [`UserTopicUpdateRequest`]. The field is a string: a value
-/// Centrifugo accepts which no constant names can still be sent.
-pub const OP_SET: &str = "set";
-
-/// `"eq"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"eq"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_EQ: &str = "eq";
 
-/// `"neq"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"neq"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_NEQ: &str = "neq";
 
-/// `"in"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"in"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_IN: &str = "in";
 
-/// `"nin"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"nin"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_NIN: &str = "nin";
 
-/// `"ex"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"ex"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_EX: &str = "ex";
 
-/// `"nex"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"nex"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_NEX: &str = "nex";
 
-/// `"sw"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"sw"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_SW: &str = "sw";
 
-/// `"ew"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"ew"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_EW: &str = "ew";
 
-/// `"ct"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"ct"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_CT: &str = "ct";
 
-/// `"gt"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"gt"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_GT: &str = "gt";
 
-/// `"gte"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"gte"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_GTE: &str = "gte";
 
-/// `"lt"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"lt"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_LT: &str = "lt";
 
-/// `"lte"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"lte"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_LTE: &str = "lte";
 
-/// `"fcm"`, a value of the `provider` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// `"fcm"`, a value of `provider` of [`DeviceRegisterRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const PROVIDER_FCM: &str = "fcm";
 
-/// `"hms"`, a value of the `provider` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// `"hms"`, a value of `provider` of [`DeviceRegisterRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const PROVIDER_HMS: &str = "hms";
 
-/// `"apns"`, a value of the `provider` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// `"apns"`, a value of `provider` of [`DeviceRegisterRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const PROVIDER_APNS: &str = "apns";
 
-/// `"webpush"`, a value of the `provider` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// `"webpush"`, a value of `provider` of [`DeviceRegisterRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const PROVIDER_WEBPUSH: &str = "webpush";
 
-/// `"ios"`, a value of the `platform` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// `"ios"`, a value of `platform` of [`DeviceRegisterRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const PLATFORM_IOS: &str = "ios";
 
-/// `"android"`, a value of the `platform` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// `"android"`, a value of `platform` of [`DeviceRegisterRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const PLATFORM_ANDROID: &str = "android";
 
-/// `"web"`, a value of the `platform` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// `"web"`, a value of `platform` of [`DeviceRegisterRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const PLATFORM_WEB: &str = "web";
 
-/// `"delivered"`, a value of the `status` field of [`UpdatePushStatusRequest`]. The field is a string: a value
+/// `"add"`, a value of `op` of [`DeviceTopicsUpdate`], `op` of [`DeviceTopicUpdateRequest`] and `op` of [`UserTopicUpdateRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const OP_ADD: &str = "add";
+
+/// `"remove"`, a value of `op` of [`DeviceTopicsUpdate`], `op` of [`DeviceTopicUpdateRequest`] and `op` of [`UserTopicUpdateRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const OP_REMOVE: &str = "remove";
+
+/// `"set"`, a value of `op` of [`DeviceTopicsUpdate`], `op` of [`DeviceTopicUpdateRequest`] and `op` of [`UserTopicUpdateRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const OP_SET: &str = "set";
+
+/// `"delivered"`, a value of `status` of [`UpdatePushStatusRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const STATUS_DELIVERED: &str = "delivered";
 
-/// `"interacted"`, a value of the `status` field of [`UpdatePushStatusRequest`]. The field is a string: a value
+/// `"interacted"`, a value of `status` of [`UpdatePushStatusRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const STATUS_INTERACTED: &str = "interacted";
 
-/// `"if_new"`, a value of the `key_mode` field of [`MapPublishRequest`]. The field is a string: a value
+/// `"if_new"`, a value of `key_mode` of [`MapPublishRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const KEY_MODE_IF_NEW: &str = "if_new";
 
-/// `"if_exists"`, a value of the `key_mode` field of [`MapPublishRequest`]. The field is a string: a value
+/// `"if_exists"`, a value of `key_mode` of [`MapPublishRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const KEY_MODE_IF_EXISTS: &str = "if_exists";
 

@@ -60,8 +60,10 @@ cheap to clone, and safe for concurrent use.
 
 A field with a fixed set of values has a constant per value - `OP_ADD`,
 `PROVIDER_FCM`, `PLATFORM_IOS`, and `cent::proxy::ENCODING_BINARY` in the
-proxy - generated from the protos. The fields stay strings: a value
-Centrifugo accepts which no constant names can still be sent.
+proxy - generated from the protos and named as the spec pins them, the same
+field the same in both: `FILTER_NODE_OP_AND`, `proxy::FILTER_NODE_OP_AND`.
+The fields stay strings: a value Centrifugo accepts which no constant names
+can still be sent.
 
 ## Pages and stream positions
 

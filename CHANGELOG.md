@@ -62,12 +62,13 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
 ### Added
 
 - Constants for every string field with a fixed set of values, generated
-  from the protos' `One of:` sentences: `OP_ADD`, `PROVIDER_FCM`,
-  `PLATFORM_IOS`, `STATUS_DELIVERED`, `KEY_MODE_IF_NEW`, `CMP_EQ`,
-  `FILTER_NODE_OP_AND` and the rest at the crate's root;
-  `proxy::ENCODING_BINARY`, `proxy::PROTOCOL_JSON`, `proxy::ALLOW_SUB`,
-  `proxy::MATCH_WILDCARD`, `proxy::TYPE_OCCUPIED` and the rest for the proxy.
-  The fields stay strings.
+  from the protos' `One of:` sentences and named as the spec's table pins
+  them: `OP_ADD`, `PROVIDER_FCM`, `PLATFORM_IOS`, `STATUS_DELIVERED`,
+  `KEY_MODE_IF_NEW`, `CMP_EQ`, `FILTER_NODE_OP_AND` and the rest at the
+  crate's root; `proxy::ENCODING_BINARY`, `proxy::PROTOCOL_JSON`,
+  `proxy::ALLOW_SUB`, `proxy::CAPABILITY_MATCH_WILDCARD`,
+  `proxy::CHANNEL_EVENT_TYPE_OCCUPIED`, `proxy::FILTER_NODE_OP_AND` and the
+  rest for the proxy. The fields stay strings.
 - `history_all`, `device_list_all`, `device_topic_list_all`,
   `user_topic_list_all` and `map_read_state_all` read every item of a paged
   method, a page at a time: a `Pager` with `async fn next` on the async

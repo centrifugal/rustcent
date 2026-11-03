@@ -51,9 +51,15 @@ pub(crate) fn run(root: &Path, check: bool, accept_required: bool) -> Result<(),
     rust_type_names(&mut api);
     rust_type_names(&mut proxy);
 
+    let api_pins = Pins::parse("xtask/constants_api.txt", &read("xtask/constants_api.txt")?)?;
+    let proxy_pins = Pins::parse(
+        "xtask/constants_proxy.txt",
+        &read("xtask/constants_proxy.txt")?,
+    )?;
+
     let mut required = Reviewed::default();
-    let api_src = generate_api(&api, &mut required)?;
-    let proxy_src = generate_proxy(&proxy)?;
+    let api_src = generate_api(&api, &mut required, &api_pins)?;
+    let proxy_src = generate_proxy(&proxy, &proxy_pins)?;
     let test_src = generate_methods_test(&api)?;
     check_required(root, &required, accept_required)?;
 
@@ -860,30 +866,76 @@ pub(crate) fn listed_values(doc: &[String]) -> Result<Vec<String>, String> {
     Ok(values)
 }
 
-/// The constants of a string field with listed values: the values, and the
-/// messages whose field of that name lists exactly them.
+/// The pinned names of the constants (spec 3.3), as `xtask/constants_*.txt`
+/// lists them: a selector - `Message.field`, or `*.field` for the field in
+/// every message - and the name the spec gives it.
+#[derive(Debug)]
+pub(crate) struct Pins {
+    file: String,
+    pins: Vec<(String, String, String)>,
+}
+
+impl Pins {
+    /// Parses a pin list: a line per pin, `#` starting a comment line.
+    pub(crate) fn parse(file: &str, src: &str) -> Result<Self, String> {
+        let mut pins = Vec::new();
+        for (n, line) in src.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let bad = || format!("{file}:{}: want \"Message.field Name\": {line:?}", n + 1);
+            let mut words = line.split_whitespace();
+            let (Some(selector), Some(name), None) = (words.next(), words.next(), words.next())
+            else {
+                return Err(bad());
+            };
+            let (message, field) = selector.split_once('.').ok_or_else(bad)?;
+            if message.is_empty()
+                || field.is_empty()
+                || !name.starts_with(|c: char| c.is_ascii_uppercase())
+                || !name.chars().all(|c| c.is_ascii_alphanumeric())
+            {
+                return Err(bad());
+            }
+            pins.push((message.to_owned(), field.to_owned(), name.to_owned()));
+        }
+        Ok(Self {
+            file: file.to_owned(),
+            pins,
+        })
+    }
+
+    /// The pin naming `message.field`: its own, before a `*.field` one.
+    fn find(&self, message: &str, field: &str) -> Option<usize> {
+        let exact = self
+            .pins
+            .iter()
+            .position(|(m, f, _)| m == message && f == field);
+        exact.or_else(|| {
+            self.pins
+                .iter()
+                .position(|(m, f, _)| m == "*" && f == field)
+        })
+    }
+}
+
+/// The constants of the string fields with listed values given one name by
+/// the pins (spec 3.3): the name, the values, and the fields listing them.
 #[derive(Debug)]
 pub(crate) struct ConstGroup {
-    pub(crate) field: String,
+    /// The name the spec pins, as `FilterNodeOp`.
+    pub(crate) name: String,
     pub(crate) values: Vec<String>,
-    pub(crate) messages: Vec<String>,
-    /// The message, when the field's name alone would be ambiguous.
-    pub(crate) prefix: Option<String>,
+    /// The fields with these constants, as (message, field).
+    pub(crate) fields: Vec<(String, String)>,
 }
 
 impl ConstGroup {
-    /// The constant of one of the group's values: `OP_ADD` for the `op`
-    /// field's `add`, `FILTER_NODE_OP_AND` with a prefix.
+    /// The constant of one of the group's values: `OP_ADD` for `Op`'s `add`,
+    /// `FILTER_NODE_OP_AND` for `FilterNodeOp`'s `and`.
     pub(crate) fn const_name(&self, value: &str) -> String {
-        let mut name = String::new();
-        if let Some(p) = &self.prefix {
-            name.push_str(&screaming(p));
-            name.push('_');
-        }
-        name.push_str(&self.field.to_uppercase());
-        name.push('_');
-        name.push_str(&value.to_uppercase());
-        name
+        format!("{}_{}", screaming(&self.name), value.to_uppercase())
     }
 }
 
@@ -899,17 +951,19 @@ fn screaming(camel: &str) -> String {
     out
 }
 
-/// The fields with listed values of the messages `include` accepts, in the
-/// proto's order. A constant is named by its field and value; where fields
-/// of one name list different values in different messages, the set listed
-/// in the most messages keeps the short name and the others are named by
-/// their message too - `OP_ADD` for the topic updates, `FILTER_NODE_OP_AND`
-/// for `FilterNode` - and a tie names all of them so (spec 3.3).
+/// The fields with listed values of the messages `include` accepts, grouped
+/// by the names `pins` gives them, in the proto's order (spec 3.3). It fails
+/// on a field with a "One of:" sentence no pin names, a pin naming no field,
+/// and one name over different values, so that a name never changes because
+/// an unrelated message appeared: a person names a new field in the spec's
+/// table, and in the list.
 pub(crate) fn const_groups(
     s: &Schema,
     include: impl Fn(&str) -> bool,
+    pins: &Pins,
 ) -> Result<Vec<ConstGroup>, String> {
-    let mut by_field: Vec<(String, Vec<ConstGroup>)> = Vec::new();
+    let mut groups: Vec<ConstGroup> = Vec::new();
+    let mut used = vec![false; pins.pins.len()];
     for m in s.messages.iter().filter(|m| include(&m.name)) {
         for f in &m.fields {
             let values =
@@ -923,48 +977,52 @@ pub(crate) fn const_groups(
                     m.name, f.name
                 ));
             }
-            let i = if let Some(i) = by_field.iter().position(|(n, _)| *n == f.name) {
-                i
-            } else {
-                by_field.push((f.name.clone(), Vec::new()));
-                by_field.len() - 1
+            let Some(pin) = pins.find(&m.name, &f.name) else {
+                return Err(format!(
+                    "{}.{} has a \"One of:\" sentence but no name in {}: name it in the spec's table (section 3.3), for every SDK, and here",
+                    m.name, f.name, pins.file
+                ));
             };
-            let groups = &mut by_field[i].1;
-            let g = if let Some(g) = groups.iter().position(|g| g.values == values) {
-                g
-            } else {
-                groups.push(ConstGroup {
-                    field: f.name.clone(),
-                    values,
-                    messages: Vec::new(),
-                    prefix: None,
-                });
-                groups.len() - 1
-            };
-            groups[g].messages.push(m.name.clone());
-        }
-    }
-    let mut out = Vec::new();
-    for (name, mut groups) in by_field {
-        if groups.len() > 1 {
-            let most = groups.iter().map(|g| g.messages.len()).max().unwrap_or(0);
-            let tie = groups.iter().filter(|g| g.messages.len() == most).count() > 1;
-            for g in &mut groups {
-                if g.messages.len() == most && !tie {
-                    continue;
-                }
-                if g.messages.len() > 1 {
+            used[pin] = true;
+            let name = &pins.pins[pin].2;
+            match groups.iter_mut().find(|g| g.name == *name) {
+                Some(g) if g.values != values => {
                     return Err(format!(
-                        "field {name} lists {:?} in {:?} and other values elsewhere: cannot name its constants",
-                        g.values, g.messages
+                        "{name} names {:?} of {} and {values:?} of {}.{}: one name over different values",
+                        g.values,
+                        g.fields
+                            .iter()
+                            .map(|(m, f)| format!("{m}.{f}"))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        m.name,
+                        f.name
                     ));
                 }
-                g.prefix = Some(g.messages[0].clone());
+                Some(g) => g.fields.push((m.name.clone(), f.name.clone())),
+                None => groups.push(ConstGroup {
+                    name: name.clone(),
+                    values,
+                    fields: vec![(m.name.clone(), f.name.clone())],
+                }),
             }
         }
-        out.extend(groups);
     }
-    Ok(out)
+    let unused: Vec<String> = pins
+        .pins
+        .iter()
+        .zip(&used)
+        .filter(|(_, used)| !**used)
+        .map(|((m, f, n), _)| format!("{m}.{f} {n}"))
+        .collect();
+    if !unused.is_empty() {
+        return Err(format!(
+            "{} pins names no field with a \"One of:\" sentence uses: {}",
+            pins.file,
+            unused.join(", ")
+        ));
+    }
+    Ok(groups)
 }
 
 /// Joins words as a sentence does: "a, b and c".
@@ -979,13 +1037,16 @@ fn join_and(words: &[String]) -> String {
 /// Writes a constant per listed value.
 fn emit_constants(w: &mut Writer, groups: &[ConstGroup]) {
     for g in groups {
-        let messages: Vec<String> = g.messages.iter().map(|m| format!("[`{m}`]")).collect();
+        let fields: Vec<String> = g
+            .fields
+            .iter()
+            .map(|(m, f)| format!("`{f}` of [`{m}`]"))
+            .collect();
         for v in &g.values {
             w.line("");
             w.line(&format!(
-                "/// `{v:?}`, a value of the `{}` field of {}. The field is a string: a value",
-                g.field,
-                join_and(&messages)
+                "/// `{v:?}`, a value of {}. The field is a string: a value",
+                join_and(&fields)
             ));
             w.line("/// Centrifugo accepts which no constant names can still be sent.");
             w.line(&format!("pub const {}: &str = {v:?};", g.const_name(v)));
@@ -997,7 +1058,7 @@ fn emit_constants(w: &mut Writer, groups: &[ConstGroup]) {
 fn constants_doc(groups: &[ConstGroup], message: &str, field: &str) -> Option<String> {
     let g = groups
         .iter()
-        .find(|g| g.field == field && g.messages.iter().any(|m| m == message))?;
+        .find(|g| g.fields.iter().any(|(m, f)| m == message && f == field))?;
     let names: Vec<String> = g
         .values
         .iter()
@@ -1074,7 +1135,7 @@ fn method_doc(c: &ApiCommand) -> Vec<String> {
 }
 
 #[allow(clippy::too_many_lines)] // one block per generated part, in order
-fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
+fn generate_api(s: &Schema, required: &mut Reviewed, pins: &Pins) -> Result<String, String> {
     let cmds = commands(s)?;
     let envelopes: HashSet<&str> = s.methods.iter().map(|m| m.response.as_str()).collect();
     let omitted: HashSet<String> = {
@@ -1095,7 +1156,8 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
             || wrapper_scalar(s, name).is_some()
     };
     let inputs = closure(s, cmds.iter().map(|c| c.request.as_str()));
-    let groups = const_groups(s, |name| !skip(name)).map_err(|e| format!("api.proto: {e}"))?;
+    let groups =
+        const_groups(s, |name| !skip(name), pins).map_err(|e| format!("api.proto: {e}"))?;
     let emitted: HashSet<String> = s
         .messages
         .iter()
@@ -1283,7 +1345,7 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
 // ---------------------------------------------------------------------------
 // The proxy
 
-fn generate_proxy(s: &Schema) -> Result<String, String> {
+fn generate_proxy(s: &Schema, pins: &Pins) -> Result<String, String> {
     let http: Vec<_> = s.methods.iter().filter(|m| !m.streaming).collect();
     // Every message an HTTP proxy method uses; those of streaming methods,
     // which only GRPC can call, are left out.
@@ -1300,9 +1362,11 @@ fn generate_proxy(s: &Schema) -> Result<String, String> {
         .flat_map(|r| r.fields.iter().map(|f| f.typ.as_str()))
         .collect();
     let inputs = closure(s, results);
-    let groups = const_groups(s, |name| {
-        used.contains(name) && wrapper_scalar(s, name).is_none()
-    })
+    let groups = const_groups(
+        s,
+        |name| used.contains(name) && wrapper_scalar(s, name).is_none(),
+        pins,
+    )
     .map_err(|e| format!("proxy.proto: {e}"))?;
 
     let mut w = Writer { out: String::new() };
@@ -1636,48 +1700,106 @@ mod tests {
         assert!(listed_values(&doc(&["One of: a,, b."])).is_err());
     }
 
-    fn names(src: &str) -> Result<Vec<String>, String> {
+    fn names(src: &str, pins: &str) -> Result<Vec<String>, String> {
         let s = proto::parse(src, "test.proto")?;
-        let groups = const_groups(&s, |_| true)?;
+        let pins = Pins::parse("pins.txt", pins)?;
+        let groups = const_groups(&s, |_| true, &pins)?;
         Ok(groups
             .iter()
             .flat_map(|g| g.values.iter().map(|v| g.const_name(v)))
             .collect())
     }
 
+    /// A constant is named by its pin, not by counting messages: a field's
+    /// own pin before a `*.field` one, one name over the fields listing the
+    /// same values (spec 3.3).
     #[test]
-    fn constant_names() {
-        let got = names(
-            "message A {\n  string op = 1; // One of: add, remove.\n}\n\
-             message B {\n  string op = 1; // One of: add, remove.\n}\n\
-             message FilterNode {\n  string op = 1; // One of: and, or.\n  string key_mode = 2; // One of: if_new.\n}\n",
-        );
+    fn constants_are_named_by_their_pins() {
+        let src = "message A {\n  string op = 1; // One of: add, remove.\n}\n\
+             message B {\n  string op = 1; // One of: add, remove.\n  string encoding = 2; // One of: json.\n}\n\
+             message FilterNode {\n  string op = 1; // One of: and, or.\n  string encoding = 2; // One of: json.\n}\n";
+        let pins =
+            "# a comment\nA.op Op\nB.op Op\nFilterNode.op FilterNodeOp\n*.encoding Encoding\n";
         assert_eq!(
-            got.unwrap(),
+            names(src, pins).unwrap(),
             [
                 "OP_ADD",
                 "OP_REMOVE",
+                "ENCODING_JSON",
                 "FILTER_NODE_OP_AND",
-                "FILTER_NODE_OP_OR",
-                "KEY_MODE_IF_NEW"
+                "FILTER_NODE_OP_OR"
             ]
         );
     }
 
+    /// The generation fails on a field the pins lack, a pin no field uses,
+    /// one name over different values, and a malformed line.
     #[test]
-    fn a_tie_names_every_group_by_its_message() {
-        let got = names(
-            "message A {\n  string op = 1; // One of: add.\n}\n\
-             message C {\n  string op = 1; // One of: and.\n}\n",
+    fn the_pins_are_checked() {
+        let src = "message A {\n  string op = 1; // One of: add.\n}\n\
+             message C {\n  string op = 1; // One of: and.\n}\n";
+        let missing = names(src, "A.op Op\n").unwrap_err();
+        assert!(
+            missing.contains("C.op") && missing.contains("no name"),
+            "{missing}"
         );
-        assert_eq!(got.unwrap(), ["A_OP_ADD", "C_OP_AND"]);
-        let ambiguous = names(
-            "message A {\n  string op = 1; // One of: add.\n}\n\
-             message B {\n  string op = 1; // One of: add.\n}\n\
-             message C {\n  string op = 1; // One of: and.\n}\n\
-             message D {\n  string op = 1; // One of: and.\n}\n",
-        );
-        assert!(ambiguous.is_err());
+        let unused = names(src, "A.op Op\nC.op COp\nD.mode Mode\n").unwrap_err();
+        assert!(unused.contains("D.mode Mode"), "{unused}");
+        let clash = names(src, "*.op Op\n").unwrap_err();
+        assert!(clash.contains("different values"), "{clash}");
+        for bad in [
+            "A.op",
+            "A.op Op extra",
+            "Aop Op",
+            "A.op op",
+            ".op Op",
+            "A.op O_p",
+        ] {
+            assert!(Pins::parse("pins.txt", bad).is_err(), "{bad:?}");
+        }
+    }
+
+    /// The lists agree with the protos, and give exactly the names of the
+    /// spec's table (section 3.3).
+    #[test]
+    fn the_lists_agree_with_the_protos() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let read = |p: &str| std::fs::read_to_string(root.join(p)).expect(p);
+        for (proto_file, list, want) in [
+            (
+                "proto/api.proto",
+                "xtask/constants_api.txt",
+                &[
+                    "Cmp",
+                    "FilterNodeOp",
+                    "KeyMode",
+                    "Op",
+                    "Platform",
+                    "Provider",
+                    "Status",
+                ][..],
+            ),
+            (
+                "proto/proxy.proto",
+                "xtask/constants_proxy.txt",
+                &[
+                    "Allow",
+                    "CapabilityMatch",
+                    "ChannelEventType",
+                    "Cmp",
+                    "Encoding",
+                    "FilterNodeOp",
+                    "KeyMode",
+                    "Protocol",
+                ][..],
+            ),
+        ] {
+            let s = proto::parse(&read(proto_file), proto_file).unwrap();
+            let pins = Pins::parse(list, &read(list)).unwrap();
+            let groups = const_groups(&s, |_| true, &pins).unwrap();
+            let names: BTreeSet<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+            assert_eq!(names.into_iter().collect::<Vec<_>>(), want, "{list}");
+        }
     }
 
     #[test]

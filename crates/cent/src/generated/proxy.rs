@@ -13,7 +13,7 @@ use serde_json::value::RawValue;
 pub struct FilterNode {
     /// The logical operation. Empty for a leaf node. One of: and, or, not.
     ///
-    /// The values have constants: [`OP_AND`], [`OP_OR`], [`OP_NOT`].
+    /// The values have constants: [`FILTER_NODE_OP_AND`], [`FILTER_NODE_OP_OR`], [`FILTER_NODE_OP_NOT`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -672,7 +672,7 @@ pub struct ChannelsCapability {
     /// How channels are matched: empty for exact names. One of:
     /// wildcard, regex.
     ///
-    /// The values have constants: [`MATCH_WILDCARD`], [`MATCH_REGEX`].
+    /// The values have constants: [`CAPABILITY_MATCH_WILDCARD`], [`CAPABILITY_MATCH_REGEX`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2389,7 +2389,7 @@ pub struct ChannelEvent {
     /// when it lost its last one. More types may come; the field is a string,
     /// not an enum, for JSON interoperability. One of: occupied, vacated.
     ///
-    /// The values have constants: [`TYPE_OCCUPIED`], [`TYPE_VACATED`].
+    /// The values have constants: [`CHANNEL_EVENT_TYPE_OCCUPIED`], [`CHANNEL_EVENT_TYPE_VACATED`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2623,122 +2623,122 @@ pub struct SharedPollRefreshResponse {
     pub error: Option<Error>,
 }
 
-/// `"and"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
+/// `"and"`, a value of `op` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
-pub const OP_AND: &str = "and";
+pub const FILTER_NODE_OP_AND: &str = "and";
 
-/// `"or"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
+/// `"or"`, a value of `op` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
-pub const OP_OR: &str = "or";
+pub const FILTER_NODE_OP_OR: &str = "or";
 
-/// `"not"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
+/// `"not"`, a value of `op` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
-pub const OP_NOT: &str = "not";
+pub const FILTER_NODE_OP_NOT: &str = "not";
 
-/// `"eq"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"eq"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_EQ: &str = "eq";
 
-/// `"neq"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"neq"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_NEQ: &str = "neq";
 
-/// `"in"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"in"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_IN: &str = "in";
 
-/// `"nin"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"nin"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_NIN: &str = "nin";
 
-/// `"ex"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"ex"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_EX: &str = "ex";
 
-/// `"nex"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"nex"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_NEX: &str = "nex";
 
-/// `"sw"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"sw"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_SW: &str = "sw";
 
-/// `"ew"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"ew"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_EW: &str = "ew";
 
-/// `"ct"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"ct"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_CT: &str = "ct";
 
-/// `"gt"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"gt"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_GT: &str = "gt";
 
-/// `"gte"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"gte"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_GTE: &str = "gte";
 
-/// `"lt"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"lt"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_LT: &str = "lt";
 
-/// `"lte"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// `"lte"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const CMP_LTE: &str = "lte";
 
-/// `"json"`, a value of the `protocol` field of [`ConnectRequest`], [`RefreshRequest`], [`SubscribeRequest`], [`PublishRequest`], [`MapPublishRequest`], [`MapRemoveRequest`], [`RpcRequest`] and [`SubRefreshRequest`]. The field is a string: a value
+/// `"json"`, a value of `protocol` of [`ConnectRequest`], `protocol` of [`RefreshRequest`], `protocol` of [`SubscribeRequest`], `protocol` of [`PublishRequest`], `protocol` of [`MapPublishRequest`], `protocol` of [`MapRemoveRequest`], `protocol` of [`RpcRequest`] and `protocol` of [`SubRefreshRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const PROTOCOL_JSON: &str = "json";
 
-/// `"protobuf"`, a value of the `protocol` field of [`ConnectRequest`], [`RefreshRequest`], [`SubscribeRequest`], [`PublishRequest`], [`MapPublishRequest`], [`MapRemoveRequest`], [`RpcRequest`] and [`SubRefreshRequest`]. The field is a string: a value
+/// `"protobuf"`, a value of `protocol` of [`ConnectRequest`], `protocol` of [`RefreshRequest`], `protocol` of [`SubscribeRequest`], `protocol` of [`PublishRequest`], `protocol` of [`MapPublishRequest`], `protocol` of [`MapRemoveRequest`], `protocol` of [`RpcRequest`] and `protocol` of [`SubRefreshRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const PROTOCOL_PROTOBUF: &str = "protobuf";
 
-/// `"json"`, a value of the `encoding` field of [`ConnectRequest`], [`RefreshRequest`], [`SubscribeRequest`], [`PublishRequest`], [`MapPublishRequest`], [`MapRemoveRequest`], [`RpcRequest`] and [`SubRefreshRequest`]. The field is a string: a value
+/// `"json"`, a value of `encoding` of [`ConnectRequest`], `encoding` of [`RefreshRequest`], `encoding` of [`SubscribeRequest`], `encoding` of [`PublishRequest`], `encoding` of [`MapPublishRequest`], `encoding` of [`MapRemoveRequest`], `encoding` of [`RpcRequest`] and `encoding` of [`SubRefreshRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const ENCODING_JSON: &str = "json";
 
-/// `"binary"`, a value of the `encoding` field of [`ConnectRequest`], [`RefreshRequest`], [`SubscribeRequest`], [`PublishRequest`], [`MapPublishRequest`], [`MapRemoveRequest`], [`RpcRequest`] and [`SubRefreshRequest`]. The field is a string: a value
+/// `"binary"`, a value of `encoding` of [`ConnectRequest`], `encoding` of [`RefreshRequest`], `encoding` of [`SubscribeRequest`], `encoding` of [`PublishRequest`], `encoding` of [`MapPublishRequest`], `encoding` of [`MapRemoveRequest`], `encoding` of [`RpcRequest`] and `encoding` of [`SubRefreshRequest`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const ENCODING_BINARY: &str = "binary";
 
-/// `"sub"`, a value of the `allow` field of [`ChannelsCapability`] and [`SubscribeResult`]. The field is a string: a value
+/// `"sub"`, a value of `allow` of [`ChannelsCapability`] and `allow` of [`SubscribeResult`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const ALLOW_SUB: &str = "sub";
 
-/// `"pub"`, a value of the `allow` field of [`ChannelsCapability`] and [`SubscribeResult`]. The field is a string: a value
+/// `"pub"`, a value of `allow` of [`ChannelsCapability`] and `allow` of [`SubscribeResult`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const ALLOW_PUB: &str = "pub";
 
-/// `"hst"`, a value of the `allow` field of [`ChannelsCapability`] and [`SubscribeResult`]. The field is a string: a value
+/// `"hst"`, a value of `allow` of [`ChannelsCapability`] and `allow` of [`SubscribeResult`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const ALLOW_HST: &str = "hst";
 
-/// `"prs"`, a value of the `allow` field of [`ChannelsCapability`] and [`SubscribeResult`]. The field is a string: a value
+/// `"prs"`, a value of `allow` of [`ChannelsCapability`] and `allow` of [`SubscribeResult`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const ALLOW_PRS: &str = "prs";
 
-/// `"wildcard"`, a value of the `match` field of [`ChannelsCapability`]. The field is a string: a value
+/// `"wildcard"`, a value of `match` of [`ChannelsCapability`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
-pub const MATCH_WILDCARD: &str = "wildcard";
+pub const CAPABILITY_MATCH_WILDCARD: &str = "wildcard";
 
-/// `"regex"`, a value of the `match` field of [`ChannelsCapability`]. The field is a string: a value
+/// `"regex"`, a value of `match` of [`ChannelsCapability`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
-pub const MATCH_REGEX: &str = "regex";
+pub const CAPABILITY_MATCH_REGEX: &str = "regex";
 
-/// `"if_new"`, a value of the `key_mode` field of [`MapPublishResult`]. The field is a string: a value
+/// `"if_new"`, a value of `key_mode` of [`MapPublishResult`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const KEY_MODE_IF_NEW: &str = "if_new";
 
-/// `"if_exists"`, a value of the `key_mode` field of [`MapPublishResult`]. The field is a string: a value
+/// `"if_exists"`, a value of `key_mode` of [`MapPublishResult`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
 pub const KEY_MODE_IF_EXISTS: &str = "if_exists";
 
-/// `"occupied"`, a value of the `type` field of [`ChannelEvent`]. The field is a string: a value
+/// `"occupied"`, a value of `type` of [`ChannelEvent`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
-pub const TYPE_OCCUPIED: &str = "occupied";
+pub const CHANNEL_EVENT_TYPE_OCCUPIED: &str = "occupied";
 
-/// `"vacated"`, a value of the `type` field of [`ChannelEvent`]. The field is a string: a value
+/// `"vacated"`, a value of `type` of [`ChannelEvent`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
-pub const TYPE_VACATED: &str = "vacated";
+pub const CHANNEL_EVENT_TYPE_VACATED: &str = "vacated";

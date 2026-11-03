@@ -251,12 +251,15 @@ async fn publishes_and_reads_history_payloads_exactly() {
         offsets.push(p.unwrap().offset);
     }
     assert_eq!(offsets, [2]);
+    // Each item carries its position: the first one's is the publication's.
     let mut all = c.history_all(HistoryRequest::new(&ch).limit(1));
-    let mut offsets = Vec::new();
+    let mut positions = Vec::new();
     while let Some(p) = all.next().await {
-        offsets.push(p.unwrap().offset);
+        positions.push(p.unwrap().position());
     }
+    let offsets: Vec<u64> = positions.iter().map(|p| p.offset).collect();
     assert_eq!(offsets, [1, 2]);
+    assert_eq!(positions[0].epoch, res.epoch);
     c.history_remove(HistoryRemoveRequest::new(&ch))
         .await
         .unwrap();
@@ -448,7 +451,13 @@ async fn maps_and_shared_polls() {
     let mut entries = c.map_read_state_all(MapReadStateRequest::new(&ch).limit(1));
     let mut keys = Vec::new();
     while let Some(e) = entries.next().await {
-        keys.push(e.unwrap().key);
+        let e = e.unwrap();
+        // Each entry carries the state's position: the first page's.
+        assert_eq!(
+            (e.state.offset, &e.state.epoch),
+            (state.offset, &state.epoch)
+        );
+        keys.push(e.into_entry().key);
     }
     keys.sort_unstable();
     assert_eq!(keys, ["k1", "k2"]);

@@ -79,12 +79,19 @@ use cent::{HistoryRequest, PublishRequest};
 let published = client.publish(PublishRequest::new("news").data(data)).await?;
 // Later: what came after that publication.
 let mut after = client.history_all(HistoryRequest::new("news").limit(100).since(published.position()));
-while let Some(publication) = after.next().await {
-    let publication = publication?;
-    println!("{}", publication.offset);
+let mut last = None;
+while let Some(item) = after.next().await {
+    let item = item?; // a HistoryItem, which derefs to the Publication
+    println!("{}", item.offset);
+    last = Some(item.position()); // to resume from later
 }
 # Ok(()) }
 ```
+
+`history_all` yields each publication with its position, a `HistoryItem`, and
+`map_read_state_all` each entry with the position of the state it was read
+at, a `MapStateItem` whose `state` `map_read_stream` follows the map from.
+Both deref to the publication or entry they carry.
 
 The blocking client's `*_all` methods return an `Iterator`. Items added or
 removed while iterating may or may not be seen. A position whose epoch is no

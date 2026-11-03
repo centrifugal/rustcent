@@ -23,8 +23,8 @@ use crate::client::Bound;
 use crate::error::TimeoutError;
 use crate::{
     BatchOptions, BatchResult, BroadcastRequest, BroadcastResult, BroadcastRetryOptions, Config,
-    Device, DeviceListRequest, DeviceTopic, DeviceTopicListRequest, Error, HistoryRequest,
-    MapEntry, MapReadStateRequest, Pending, Publication, UserTopic, UserTopicListRequest,
+    Device, DeviceListRequest, DeviceTopic, DeviceTopicListRequest, Error, HistoryItem,
+    HistoryRequest, MapReadStateRequest, MapStateItem, Pending, UserTopic, UserTopicListRequest,
 };
 
 /// Calls Centrifugo's HTTP server API, blocking: the async
@@ -185,7 +185,7 @@ impl Client {
     /// The publications of a channel's history, a page at a time: see
     /// [`crate::Client::history_all`].
     #[must_use]
-    pub fn history_all(&self, request: HistoryRequest) -> Pager<Publication> {
+    pub fn history_all(&self, request: HistoryRequest) -> Pager<HistoryItem> {
         self.pager(|c| c.history_all(request))
     }
 
@@ -213,7 +213,7 @@ impl Client {
     /// Every entry of a map channel's state, a page at a time: see
     /// [`crate::Client::map_read_state_all`].
     #[must_use]
-    pub fn map_read_state_all(&self, request: MapReadStateRequest) -> Pager<MapEntry> {
+    pub fn map_read_state_all(&self, request: MapReadStateRequest) -> Pager<MapStateItem> {
         self.pager(|c| c.map_read_state_all(request))
     }
 

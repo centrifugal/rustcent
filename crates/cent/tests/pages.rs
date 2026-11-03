@@ -290,6 +290,45 @@ async fn map_read_state_all_pins_the_revision() {
     }
 }
 
+/// `history_all` yields each publication with its position, the page's
+/// epoch beside its offset; `map_read_state_all` each entry with the state's
+/// position, the revision every page is read at: the first page's, or the
+/// request's own (spec 3.8). The items deref to what they carry.
+#[tokio::test]
+async fn items_carry_their_positions() {
+    let fake = fake(2 * LIMIT + 1, None);
+    let client = Client::new(fake.config()).unwrap();
+    let (positions, err) = drain(
+        client.history_all(HistoryRequest::new("c").limit(LIMIT as i32)),
+        |p| {
+            assert_eq!(p.position().offset, p.offset);
+            format!("{}/{}", p.position().offset, p.position().epoch)
+        },
+    )
+    .await;
+    assert!(err.is_none(), "{err:?}");
+    assert_eq!(positions, ["1/e", "2/e", "3/e", "4/e", "5/e"]);
+
+    for (req, want) in [
+        (MapReadStateRequest::new("c").limit(LIMIT as i32), "7/e"),
+        (
+            MapReadStateRequest::new("c")
+                .limit(LIMIT as i32)
+                .revision_offset(4)
+                .revision_epoch("x"),
+            "4/x",
+        ),
+    ] {
+        let (states, err) = drain(client.map_read_state_all(req), |e| {
+            format!("{}:{}/{}", e.key, e.state.offset, e.state.epoch)
+        })
+        .await;
+        assert!(err.is_none(), "{err:?}");
+        let keys: Vec<String> = (0..2 * LIMIT + 1).map(|i| format!("{i}:{want}")).collect();
+        assert_eq!(states, keys);
+    }
+}
+
 #[test]
 fn positions() {
     let want = |p: StreamPosition| (p.offset, p.epoch);
@@ -340,7 +379,7 @@ fn the_blocking_client_iterates() {
             .collect(),
         client
             .map_read_state_all(MapReadStateRequest::new("c").limit(limit))
-            .map(|e| e.map(|e| e.key))
+            .map(|e| e.map(|e| e.entry.key))
             .map(ids)
             .collect(),
     ] {

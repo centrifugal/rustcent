@@ -2,10 +2,82 @@
 //! item of a paged method, and `position()` on the results holding a stream
 //! position.
 
+use std::ops::Deref;
+
 use crate::{
-    HistoryResult, MapPublishResult, MapReadStateResult, MapReadStreamResult, MapRemoveResult,
-    PublishResult, StreamPosition,
+    HistoryResult, MapEntry, MapPublishResult, MapReadStateResult, MapReadStreamResult,
+    MapRemoveResult, Publication, PublishResult, StreamPosition,
 };
+
+/// A publication read by [`history_all`](crate::Client::history_all), with
+/// the epoch of the stream it was read from: its
+/// [`position`](Self::position) is where to resume reading, or the
+/// `recover_since` of a subscription, with no fields copied by hand (spec
+/// 3.8). It derefs to the [`Publication`]: `item.offset`, `item.data`.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct HistoryItem {
+    /// The publication.
+    pub publication: Publication,
+    /// The epoch of the channel's stream the publication is in.
+    pub epoch: String,
+}
+
+impl HistoryItem {
+    /// Where the publication is in the channel's stream: the `since` of a
+    /// [`HistoryRequest`](crate::HistoryRequest) reading what came after it.
+    #[must_use]
+    pub fn position(&self) -> StreamPosition {
+        StreamPosition::new()
+            .offset(self.publication.offset)
+            .epoch(self.epoch.clone())
+    }
+
+    /// The publication, without the epoch.
+    #[must_use]
+    pub fn into_publication(self) -> Publication {
+        self.publication
+    }
+}
+
+impl Deref for HistoryItem {
+    type Target = Publication;
+
+    fn deref(&self) -> &Publication {
+        &self.publication
+    }
+}
+
+/// An entry read by [`map_read_state_all`](crate::Client::map_read_state_all),
+/// with the position of the state it was read at: reading the map's stream
+/// from [`state`](Self::state) with
+/// [`map_read_stream`](crate::Client::map_read_stream) gets every change made
+/// since (spec 3.8). It derefs to the [`MapEntry`]: `item.key`, `item.data`.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct MapStateItem {
+    /// The entry.
+    pub entry: MapEntry,
+    /// The position of the map's state the entry was read at - the revision
+    /// every page is read at: the first page's, or the request's own.
+    pub state: StreamPosition,
+}
+
+impl MapStateItem {
+    /// The entry, without the state's position.
+    #[must_use]
+    pub fn into_entry(self) -> MapEntry {
+        self.entry
+    }
+}
+
+impl Deref for MapStateItem {
+    type Target = MapEntry;
+
+    fn deref(&self) -> &MapEntry {
+        &self.entry
+    }
+}
 
 impl PublishResult {
     /// Where the publication went in the channel's stream: the `since` of a
@@ -83,11 +155,12 @@ mod pager {
 
     use serde::de::DeserializeOwned;
 
+    use super::{HistoryItem, MapStateItem};
     use crate::http_client::BoxFuture;
     use crate::{
         Client, Device, DeviceListRequest, DeviceListResult, DeviceTopic, DeviceTopicListRequest,
-        DeviceTopicListResult, Error, HistoryRequest, HistoryResult, MapEntry, MapReadStateRequest,
-        MapReadStateResult, Publication, Request, StreamPosition, UserTopic, UserTopicListRequest,
+        DeviceTopicListResult, Error, HistoryRequest, HistoryResult, MapReadStateRequest,
+        MapReadStateResult, Request, StreamPosition, UserTopic, UserTopicListRequest,
         UserTopicListResult,
     };
 
@@ -225,16 +298,27 @@ mod pager {
         req: HistoryRequest,
     }
 
-    impl Source<Publication> for BySince {
-        fn fetch(&mut self) -> BoxFuture<'_, Result<Page<Publication>, Error>> {
+    impl Source<HistoryItem> for BySince {
+        fn fetch(&mut self) -> BoxFuture<'_, Result<Page<HistoryItem>, Error>> {
             Box::pin(async move {
                 let res: HistoryResult = self.client.call(self.req.clone()).await?;
-                let items = res.publications;
                 let limit = usize::try_from(self.req.limit).unwrap_or(usize::MAX);
-                let last = items.len() < limit;
-                if let Some(p) = items.last() {
-                    self.req.since = Some(StreamPosition::new().offset(p.offset).epoch(res.epoch));
+                let last = res.publications.len() < limit;
+                if let Some(p) = res.publications.last() {
+                    self.req.since = Some(
+                        StreamPosition::new()
+                            .offset(p.offset)
+                            .epoch(res.epoch.clone()),
+                    );
                 }
+                let items = res
+                    .publications
+                    .into_iter()
+                    .map(|publication| HistoryItem {
+                        publication,
+                        epoch: res.epoch.clone(),
+                    })
+                    .collect();
                 Ok(Page { items, last })
             })
         }
@@ -244,7 +328,9 @@ mod pager {
         /// The publications of a channel's history, oldest first, `limit` at a
         /// time: from `since` when it is set, from the start of what the
         /// channel keeps otherwise. A page is read when the iteration reaches
-        /// it, and the iteration ends after a page shorter than `limit`.
+        /// it, and the iteration ends after a page shorter than `limit`. Each
+        /// item is a [`HistoryItem`]: the publication, which it derefs to,
+        /// and its [`position`](HistoryItem::position), to resume from.
         ///
         /// ```no_run
         /// # async fn f(client: cent::Client, data: Box<cent::RawValue>) -> Result<(), cent::Error> {
@@ -253,8 +339,11 @@ mod pager {
         /// let mut after = client.history_all(
         ///     cent::HistoryRequest::new("news").limit(100).since(published.position()),
         /// );
-        /// while let Some(publication) = after.next().await {
-        ///     println!("{}", publication?.offset);
+        /// let mut last = None;
+        /// while let Some(item) = after.next().await {
+        ///     let item = item?;
+        ///     println!("{}", item.offset);
+        ///     last = Some(item.position()); // to resume from later
         /// }
         /// # Ok(()) }
         /// ```
@@ -269,7 +358,7 @@ mod pager {
         /// the publications after the last one seen are gone, and reading again
         /// from the start is the only way on.
         #[must_use]
-        pub fn history_all(&self, request: HistoryRequest) -> Pager<Publication> {
+        pub fn history_all(&self, request: HistoryRequest) -> Pager<HistoryItem> {
             if request.limit < 1 {
                 return Pager::refused(Error::invalid_request(
                     "history",
@@ -344,9 +433,11 @@ mod pager {
         /// instead of mixing two states: read again from the start then.
         /// Entries changed while iterating may be seen in either version; for
         /// a consistent view, read the changes since the first page's position
-        /// with [`map_read_stream`](Self::map_read_stream).
+        /// with [`map_read_stream`](Self::map_read_stream), from the
+        /// [`state`](MapStateItem::state) every [`MapStateItem`] carries. Each
+        /// item derefs to its [`MapEntry`](crate::MapEntry).
         #[must_use]
-        pub fn map_read_state_all(&self, request: MapReadStateRequest) -> Pager<MapEntry> {
+        pub fn map_read_state_all(&self, request: MapReadStateRequest) -> Pager<MapStateItem> {
             Pager::new(ByCursor {
                 client: self.clone(),
                 req: request,
@@ -356,7 +447,18 @@ mod pager {
                         req.revision_offset = r.offset;
                         req.revision_epoch = r.epoch;
                     }
-                    (r.entries, r.cursor)
+                    let state = StreamPosition::new()
+                        .offset(req.revision_offset)
+                        .epoch(req.revision_epoch.clone());
+                    let items = r
+                        .entries
+                        .into_iter()
+                        .map(|entry| MapStateItem {
+                            entry,
+                            state: state.clone(),
+                        })
+                        .collect();
+                    (items, r.cursor)
                 },
                 set_cursor: |r: &mut MapReadStateRequest, c| r.cursor = c,
             })

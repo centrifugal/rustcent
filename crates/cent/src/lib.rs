@@ -138,6 +138,7 @@ pub use handler::Handler;
 pub use http_client::{BoxFuture, DefaultHttpClient, HttpClient};
 #[cfg(feature = "client")]
 pub use pages::Pager;
+pub use pages::{HistoryItem, MapStateItem};
 pub use payload::{PayloadExt, json};
 pub use request::Request;
 #[cfg(feature = "client")]

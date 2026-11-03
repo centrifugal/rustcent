@@ -45,7 +45,8 @@
 //!   channel for five minutes by default, and a second publication under the
 //!   same key is not published: a key derived from an entity must name the
 //!   event too, `order-42-paid` rather than `order-42`. The memory, Redis and
-//!   PostgreSQL brokers keep keys; the NATS broker ignores them.
+//!   PostgreSQL brokers keep keys, and the Redis plus NATS broker does through
+//!   Redis; the plain NATS broker ignores them.
 //! - **Automatic batching**: [`AutoBatch`] sends concurrent calls together
 //!   once enough requests are in flight, never waiting for a timer.
 //! - **Shutdown**: [`Client::close`] refuses new calls and waits for those in

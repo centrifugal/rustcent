@@ -24,6 +24,11 @@ use crate::{Error, Request};
 ///   the command serialized with serde, which gives the payload as the JSON
 ///   object, never as a string of it.
 ///
+/// Where the method comes apart from the payload, Centrifugo reads the
+/// payload as the request itself: write it as the JSON object - a `jsonb`
+/// column, a message body - never as a string of it, which a consumer drops
+/// with only Centrifugo's log saying so.
+///
 /// ```
 /// let data = cent::json(&serde_json::json!({"text": "hi"}))?;
 /// let cmd = cent::Command::publish(cent::PublishRequest::new("news").data(data))?;

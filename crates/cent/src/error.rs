@@ -223,9 +223,10 @@ impl fmt::Display for HttpError {
         write!(f, "unexpected HTTP status {}", self.status.as_u16())?;
         let code = self.status.as_u16();
         if self.status.is_redirection() {
-            // Centrifugo's API never redirects: something in front of it
-            // does, which the client does not follow.
-            f.write_str(" (a redirect, which the client does not follow: check api_endpoint, http or https say)")?;
+            // Centrifugo's API never redirects a call: its router redirects
+            // only a path not in canonical form, a doubled slash say, and
+            // something in front of it may redirect http to https.
+            f.write_str(" (a redirect, which the client does not follow: check api_endpoint's scheme, http or https, and its path)")?;
         } else if code == 404 {
             match self.pro_method {
                 Some(m) => write!(

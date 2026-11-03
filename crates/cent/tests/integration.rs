@@ -443,7 +443,8 @@ async fn maps_and_shared_polls() {
     let mut keys: Vec<&str> = state.entries.iter().map(|e| e.key.as_str()).collect();
     keys.sort_unstable();
     assert_eq!(keys, ["k1", "k2"]);
-    // Every entry, one to a page.
+    // Every entry, one to a page: the second page carries the first one's
+    // revision with its cursor, which Centrifugo accepts.
     let mut entries = c.map_read_state_all(MapReadStateRequest::new(&ch).limit(1));
     let mut keys = Vec::new();
     while let Some(e) = entries.next().await {
@@ -451,6 +452,16 @@ async fn maps_and_shared_polls() {
     }
     keys.sort_unstable();
     assert_eq!(keys, ["k1", "k2"]);
+    // A revision from another epoch fails: the state was reset since.
+    let mut stale = c.map_read_state_all(
+        MapReadStateRequest::new(&ch)
+            .limit(1)
+            .revision_offset(1)
+            .revision_epoch("gone"),
+    );
+    let e = stale.next().await.unwrap().unwrap_err();
+    assert_eq!(e.api_code(), Some(ApiError::UNRECOVERABLE_POSITION), "{e}");
+    assert!(stale.next().await.is_none());
     let pos = state.position();
     let stream = c
         .map_read_stream(

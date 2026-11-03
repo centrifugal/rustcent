@@ -88,7 +88,9 @@ while let Some(publication) = after.next().await {
 The blocking client's `*_all` methods return an `Iterator`. Items added or
 removed while iterating may or may not be seen. A position whose epoch is no
 longer the stream's fails with `ApiError::UNRECOVERABLE_POSITION`: the stream
-was reset, and reading from its start is the only way on.
+was reset, and reading from its start is the only way on. So
+`map_read_state_all` reads every page after the first at the first one's
+revision: a map reset between pages fails so, rather than mixing two states.
 
 ## Payloads
 

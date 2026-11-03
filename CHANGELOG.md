@@ -52,7 +52,10 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
   `user_topic_list_all` and `map_read_state_all` read every item of a paged
   method, a page at a time: a `Pager` with `async fn next` on the async
   client, an `Iterator` on the blocking one. `history_all` refuses a `limit`
-  below 1 and `reverse` before sending.
+  below 1 and `reverse` before sending. `map_read_state_all` reads every
+  page after the first at the first one's revision, unless the request sets
+  one, so that a map state reset between pages fails with code 112 instead
+  of mixing two states.
 - `position()` on `PublishResult`, `HistoryResult`, `MapReadStateResult` and
   `MapReadStreamResult`: the `StreamPosition` to read on from.
 - `SubscriptionClaims::client`, binding a subscription token to one

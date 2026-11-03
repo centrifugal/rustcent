@@ -162,11 +162,12 @@ mod pager {
     }
 
     /// A method paged by a cursor: `req`, then `req` with the cursor of
-    /// each reply, until a reply has none.
+    /// each reply, until a reply has none. `page` takes the items and the
+    /// cursor of a reply, and may set more of the next request.
     struct ByCursor<Req, Res, T> {
         client: Client,
         req: Req,
-        page: fn(Res) -> (Vec<T>, String),
+        page: fn(&mut Req, Res) -> (Vec<T>, String),
         set_cursor: fn(&mut Req, String),
     }
 
@@ -179,7 +180,7 @@ mod pager {
         fn fetch(&mut self) -> BoxFuture<'_, Result<Page<T>, Error>> {
             Box::pin(async move {
                 let res: Res = self.client.call(self.req.clone()).await?;
-                let (items, next) = (self.page)(res);
+                let (items, next) = (self.page)(&mut self.req, res);
                 let last = next.is_empty();
                 if !last {
                     (self.set_cursor)(&mut self.req, next);
@@ -271,7 +272,7 @@ mod pager {
             Pager::new(ByCursor {
                 client: self.clone(),
                 req: request,
-                page: |r: DeviceListResult| (r.items, r.next_cursor),
+                page: |_, r: DeviceListResult| (r.items, r.next_cursor),
                 set_cursor: |r: &mut DeviceListRequest, c| r.cursor = c,
             })
         }
@@ -285,7 +286,7 @@ mod pager {
             Pager::new(ByCursor {
                 client: self.clone(),
                 req: request,
-                page: |r: DeviceTopicListResult| (r.items, r.next_cursor),
+                page: |_, r: DeviceTopicListResult| (r.items, r.next_cursor),
                 set_cursor: |r: &mut DeviceTopicListRequest, c| r.cursor = c,
             })
         }
@@ -299,24 +300,37 @@ mod pager {
             Pager::new(ByCursor {
                 client: self.clone(),
                 req: request,
-                page: |r: UserTopicListResult| (r.items, r.next_cursor),
+                page: |_, r: UserTopicListResult| (r.items, r.next_cursor),
                 set_cursor: |r: &mut UserTopicListRequest, c| r.cursor = c,
             })
         }
 
         /// Every entry of a map channel's state, a page at a time, each page
-        /// read when the iteration reaches it: `limit` is the page size. An
-        /// entry changed while iterating may be seen in either version, or
-        /// not at all; for a consistent view, read the state with
-        /// [`map_read_state`](Self::map_read_state), then the changes since its
-        /// [`position`](MapReadStateResult::position) with
-        /// [`map_read_stream`](Self::map_read_stream).
+        /// read when the iteration reaches it: `limit` is the page size.
+        ///
+        /// Every page after the first is read at the first one's revision -
+        /// its [`position`](MapReadStateResult::position), as
+        /// `revision_offset` and `revision_epoch`, unless `request` sets
+        /// either - so that the map's stream reset between pages fails with
+        /// code 112,
+        /// [`ApiError::UNRECOVERABLE_POSITION`](crate::ApiError::UNRECOVERABLE_POSITION),
+        /// instead of mixing two states: read again from the start then.
+        /// Entries changed while iterating may be seen in either version; for
+        /// a consistent view, read the changes since the first page's position
+        /// with [`map_read_stream`](Self::map_read_stream).
         #[must_use]
         pub fn map_read_state_all(&self, request: MapReadStateRequest) -> Pager<MapEntry> {
             Pager::new(ByCursor {
                 client: self.clone(),
                 req: request,
-                page: |r: MapReadStateResult| (r.entries, r.cursor),
+                page: |req: &mut MapReadStateRequest, r: MapReadStateResult| {
+                    // The first page pins the others, unless the caller did.
+                    if req.revision_offset == 0 && req.revision_epoch.is_empty() {
+                        req.revision_offset = r.offset;
+                        req.revision_epoch = r.epoch;
+                    }
+                    (r.entries, r.cursor)
+                },
                 set_cursor: |r: &mut MapReadStateRequest, c| r.cursor = c,
             })
         }

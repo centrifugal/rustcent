@@ -243,6 +243,53 @@ async fn history_all_reads_on_from_a_publication() {
     );
 }
 
+/// Every page of a map's state after the first is read at the first one's
+/// revision, so that a reset between pages fails with code 112 instead of
+/// mixing two states; a revision the request sets is kept for every page.
+#[tokio::test]
+async fn map_read_state_all_pins_the_revision() {
+    let first_page = (Value::Null, Value::Null);
+    let from_reply = (json!(7), json!("e"));
+    let callers = (json!(4), json!("x"));
+    for (req, first, later) in [
+        (
+            MapReadStateRequest::new("c").limit(LIMIT as i32),
+            first_page,
+            from_reply,
+        ),
+        (
+            MapReadStateRequest::new("c")
+                .limit(LIMIT as i32)
+                .revision_offset(4)
+                .revision_epoch("x"),
+            callers.clone(),
+            callers,
+        ),
+    ] {
+        let fake = fake(2 * LIMIT + 1, None);
+        let client = Client::new(fake.config()).unwrap();
+        let (items, err) = drain(client.map_read_state_all(req), |e| e.key.clone()).await;
+        assert!(err.is_none(), "{err:?}");
+        assert_eq!(items.len(), 2 * LIMIT + 1);
+        let revisions: Vec<(Value, Value)> = fake
+            .requests()
+            .iter()
+            .map(|r| {
+                (
+                    r.body
+                        .get("revision_offset")
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                    r.body.get("revision_epoch").cloned().unwrap_or(Value::Null),
+                )
+            })
+            .collect();
+        assert_eq!(revisions.len(), 3);
+        assert_eq!(revisions[0], first);
+        assert_eq!(revisions[1..], [later.clone(), later]);
+    }
+}
+
 #[test]
 fn positions() {
     let want = |p: StreamPosition| (p.offset, p.epoch);

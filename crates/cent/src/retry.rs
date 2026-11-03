@@ -268,8 +268,8 @@ impl Client {
     /// it sends again only the channels which may still succeed, with one
     /// `idempotency_key`. Calling `broadcast` again after some channels
     /// failed sends the publication to every channel again, those which got
-    /// it included - twice, without an `idempotency_key` or with the plain
-    /// NATS broker, which ignores keys.
+    /// it included - twice, without an `idempotency_key` or with the NATS
+    /// broker, which ignores keys.
     pub async fn broadcast(&self, request: BroadcastRequest) -> Result<BroadcastResult, Error> {
         let channels = request.channels.clone();
         let key = request.idempotency_key.clone();
@@ -288,8 +288,8 @@ impl Client {
     ///   which got the publication in an earlier attempt - even one reported
     ///   as failed, after a timeout - does not get it again. When the request
     ///   has none, a random one is made for the call. The memory, Redis and
-    ///   PostgreSQL brokers keep keys, and the Redis plus NATS broker does
-    ///   through Redis; with the plain NATS broker a retry may publish again.
+    ///   PostgreSQL brokers keep keys; with the NATS broker a retry may
+    ///   publish again.
     /// - The result holds every channel's last outcome: the publication's
     ///   position from whichever attempt succeeded, or the error of its last
     ///   attempt. Its `idempotency_key` is the key the attempts used:

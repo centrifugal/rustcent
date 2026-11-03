@@ -51,8 +51,8 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
 
 ### Fixed
 
-- Docs: the Redis plus NATS broker keeps idempotency keys; the redirect hint
-  no longer says Centrifugo never redirects, and names the endpoint's path;
+- Docs: the redirect hint no longer says Centrifugo never redirects, and
+  names the endpoint's path;
   commands given apart from their method need the payload as a JSON object.
 
 ## [0.1.0]

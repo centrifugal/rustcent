@@ -58,11 +58,7 @@ RUSTCENT_STRESS_ROUNDS=5000 cargo test --release -p cent --test autobatch stress
 
 ## Commits and pull requests
 
-- PRs are squash-merged. **The PR title becomes the commit message**, and it must follow [Conventional Commits](https://www.conventionalcommits.org) (checked in CI):
-  - `feat: ...` → minor version bump before 1.0 (and a changelog "Added" entry)
-  - `fix: ...` → patch bump ("Fixed")
-  - `feat!: ...` or a `BREAKING CHANGE:` footer → breaking bump
-  - `perf`, `refactor`, `docs`, `revert` → changelog entries; `test`, `ci`, `build`, `chore` → no entry
+- PRs are squash-merged: **the PR title becomes the commit message**, so it says what the change does.
 - Each bug fix comes with a test that fails without the fix.
 
 ## Releases
@@ -86,5 +82,5 @@ A version already on crates.io is skipped, so rerunning the workflow after a fai
 2. **Trusted publisher.** On crates.io, for `cent`, go to Settings → Trusted Publishing and add GitHub: owner `centrifugal`, repository `rustcent`, workflow `release.yml`, environment `release`. After the first release through CI works, also turn on **Trusted Publishing Only** mode there, which rejects token publishes.
 3. **GitHub environment.** Create an environment named `release` (Settings → Environments). Under deployment branches and tags, allow only tags matching `v*`. Optionally add required reviewers: they approve each publish.
 4. **Tag protection.** Add a tag ruleset for `v*` (Settings → Rules → Rulesets) that only maintainers can bypass, so only they can create, move or delete release tags.
-5. **Branch protection on `main`.** Require the `CI success` and `Conventional commit title` checks. Allow squash merges only.
+5. **Branch protection on `main`.** Require the `CI success` check. Allow squash merges only.
 6. **Codecov** (optional). Install the Codecov GitHub App for the repository. Uploads use OIDC, so no token is needed.

@@ -2557,18 +2557,30 @@ pub struct DeviceUpdateRequest {
     /// `user_update` changes the user ID of the devices. It does not re-sync
     /// user-bound topics; use DeviceRegisterRequest to assign a device to
     /// another user.
+    ///
+    /// Sent whenever it is `Some`, even empty: an empty one has a meaning of
+    /// its own - see [`DeviceUserUpdate`] - and `None` leaves things as they are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_update: Option<DeviceUserUpdate>,
     /// `meta_update` updates the device meta.
+    ///
+    /// Sent whenever it is `Some`, even empty: an empty one has a meaning of
+    /// its own - see [`DeviceMetaUpdate`] - and `None` leaves things as they are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub meta_update: Option<DeviceMetaUpdate>,
     /// `topics_update` updates the device topics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topics_update: Option<DeviceTopicsUpdate>,
     /// `timezone_update` updates the device timezone.
+    ///
+    /// Sent whenever it is `Some`, even empty: an empty one has a meaning of
+    /// its own - see [`DeviceTimezoneUpdate`] - and `None` leaves things as they are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timezone_update: Option<DeviceTimezoneUpdate>,
     /// `locale_update` updates the device locale.
+    ///
+    /// Sent whenever it is `Some`, even empty: an empty one has a meaning of
+    /// its own - see [`DeviceLocaleUpdate`] - and `None` leaves things as they are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locale_update: Option<DeviceLocaleUpdate>,
 }

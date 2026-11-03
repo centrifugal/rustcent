@@ -62,7 +62,12 @@ pub(crate) mod wrapped {
 
 #[cfg(test)]
 mod tests {
-    use crate::{FilterNode, SubscribeOptionOverride, SubscribeRequest};
+    use std::collections::BTreeMap;
+
+    use crate::{
+        DeviceLocaleUpdate, DeviceMetaUpdate, DeviceTimezoneUpdate, DeviceUpdateRequest,
+        DeviceUserUpdate, FilterNode, SubscribeOptionOverride, SubscribeRequest,
+    };
 
     #[test]
     fn zero_values_are_not_sent() {
@@ -85,6 +90,26 @@ mod tests {
         assert_eq!(back.presence, Some(true));
         assert_eq!(back.join_leave, Some(false));
         assert_eq!(back.force_recovery, None);
+    }
+
+    /// The updates of `device_update` are presence wrappers (spec 2): an
+    /// empty one clears or detaches, so it is sent as `{}`, and one left
+    /// unset is not sent.
+    #[test]
+    fn empty_presence_wrappers_are_sent() {
+        let req = DeviceUpdateRequest::new()
+            .users(["42"])
+            .user_update(DeviceUserUpdate::new(""))
+            .timezone_update(DeviceTimezoneUpdate::new(""))
+            .locale_update(DeviceLocaleUpdate::new(""))
+            .meta_update(DeviceMetaUpdate::new(BTreeMap::<String, String>::new()));
+        let json = serde_json::to_string(&req).unwrap();
+        assert_eq!(
+            json,
+            r#"{"users":["42"],"user_update":{},"meta_update":{},"timezone_update":{},"locale_update":{}}"#
+        );
+        let unset = serde_json::to_string(&DeviceUpdateRequest::new().users(["42"])).unwrap();
+        assert_eq!(unset, r#"{"users":["42"]}"#);
     }
 
     #[test]

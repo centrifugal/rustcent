@@ -392,6 +392,25 @@ fn is_required(f: &Field) -> bool {
     REQUIRED.is_match(&f.doc.join(" "))
 }
 
+/// A required field whose comment gives its empty value a meaning, after
+/// "Required." - `"" detaches the devices`, `An empty map clears it.` (spec
+/// 3.3). Empty is a value of it: `new("")` sends it empty, as asked.
+pub(crate) fn empty_has_meaning(f: &Field) -> bool {
+    let doc = f.doc.join(" ");
+    doc.split_once("Required.")
+        .is_some_and(|(_, after)| after.contains("\"\"") || after.to_lowercase().contains("empty"))
+}
+
+/// A presence wrapper (spec 2): a message Centrifugo reads by whether it is
+/// there - a `*Value` holding `value`, or one whose only field's empty value
+/// has a meaning, as the updates of `device_update`. A field holding one is
+/// an `Option`, sent whenever it is `Some`, even empty.
+pub(crate) fn is_presence_wrapper(m: &Message) -> bool {
+    m.fields.len() == 1
+        && ((m.name.ends_with("Value") && m.fields[0].name == "value")
+            || (is_required(&m.fields[0]) && empty_has_meaning(&m.fields[0])))
+}
+
 /// The messages reachable from `roots` through their fields.
 fn closure<'a>(s: &Schema, roots: impl IntoIterator<Item = &'a str>) -> HashSet<String> {
     let mut seen = HashSet::new();
@@ -549,6 +568,17 @@ fn emit_message(
             w.line(&format!("/// The `{}` field.", f.name));
         } else {
             w.doc(&doc);
+        }
+        if usage.input
+            && wrapper_scalar(s, &f.typ).is_none()
+            && s.message(&f.typ).is_some_and(is_presence_wrapper)
+        {
+            w.line("///");
+            w.line("/// Sent whenever it is `Some`, even empty: an empty one has a meaning of");
+            w.line(&format!(
+                "/// its own - see [`{}`] - and `None` leaves things as they are.",
+                f.typ
+            ));
         }
         w.line(attr);
         w.line(&format!("pub {}: {typ},", ident(&f.name)));
@@ -1120,4 +1150,86 @@ fn generate_methods_test(s: &Schema) -> Result<String, String> {
     w.line("assert_eq!(paths(&fake), want);");
     w.line("}");
     Ok(w.out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn api() -> Schema {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../proto/api.proto");
+        let src = std::fs::read_to_string(path).expect("api.proto");
+        proto::parse(&src, "api.proto").expect("api.proto parses")
+    }
+
+    /// The presence wrappers and the required fields whose empty value has a
+    /// meaning, as the generator finds them in the comments (spec 2, 3.3): a
+    /// changed comment fails this test, to be reviewed.
+    #[test]
+    fn presence_from_comments() {
+        let s = api();
+        let wrappers: Vec<&str> = s
+            .messages
+            .iter()
+            .filter(|m| is_presence_wrapper(m))
+            .map(|m| m.name.as_str())
+            .collect();
+        assert_eq!(
+            wrappers,
+            [
+                "BoolValue",
+                "Int32Value",
+                "DeviceUserUpdate",
+                "DeviceTimezoneUpdate",
+                "DeviceLocaleUpdate",
+                "DeviceMetaUpdate"
+            ]
+        );
+        let empty: Vec<String> = s
+            .messages
+            .iter()
+            .flat_map(|m| {
+                m.fields
+                    .iter()
+                    .filter(|f| is_required(f) && empty_has_meaning(f))
+                    .map(move |f| format!("{}.{}", m.name, f.name))
+            })
+            .collect();
+        assert_eq!(
+            empty,
+            [
+                "InvalidateUserTokensRequest.user",
+                "DeviceUserUpdate.user",
+                "DeviceTimezoneUpdate.timezone",
+                "DeviceLocaleUpdate.locale",
+                "DeviceMetaUpdate.meta",
+                "UserTopicUpdateRequest.user",
+            ]
+        );
+    }
+
+    #[test]
+    fn required_is_unconditional() {
+        let field = |doc: &str| Field {
+            name: "f".into(),
+            typ: "string".into(),
+            repeated: false,
+            map_key: None,
+            doc: vec![doc.into()],
+        };
+        assert!(is_required(&field("f is it. Required.")));
+        assert!(!is_required(&field("f is it. Required unless g is set.")));
+        assert!(!is_required(&field(
+            "f is it. Required when the request sets g."
+        )));
+        assert!(empty_has_meaning(&field(
+            "f is it. Required. \"\" clears it."
+        )));
+        assert!(empty_has_meaning(&field(
+            "f is it. Required. An empty map clears it."
+        )));
+        assert!(!empty_has_meaning(&field(
+            "f is it, empty by default. Required."
+        )));
+    }
 }

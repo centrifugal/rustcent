@@ -94,7 +94,7 @@ impl Client {
 
     /// Returns a handle to the same client whose calls each time out after
     /// `timeout`: the call's own timeout, replacing `request_timeout`, longer
-    /// or shorter - see [`crate::Client::with_timeout`].
+    /// or shorter; zero is refused - see [`crate::Client::with_timeout`].
     #[must_use]
     pub fn with_timeout(&self, timeout: Duration) -> Self {
         Self {

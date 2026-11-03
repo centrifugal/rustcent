@@ -59,6 +59,21 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
   as their `UnauthorizedError`. The old name read like the API client's
   `Error::is_unauthorized` - Centrifugo refusing this backend's credentials
   - with the opposite meaning. Its `Display` is `forbidden`.
+- **Breaking:** an endpoint the `Config::with_endpoint_fn` function returns
+  which fails `Config::new`'s rules, and an empty or malformed token from the
+  `Config::bearer_token` function, fail the call with `Error::InvalidConfig`
+  before sending: the client is refused as configured, as `Client::new`
+  refuses it, and neither is retryable. They were `Error::Callback`.
+- **Breaking:** a configured function's own error is `Error::Function`, a
+  `FunctionError` - renamed from `Error::Callback` and `CallbackError` -
+  whose `function()` (was `which()`) and message name the function as
+  `Config` does, `"with_endpoint_fn"` (was `"api_endpoint"`) or
+  `"bearer_token"`, with the function's error as its `source()`, which
+  `retryable` judges it by.
+- **Breaking:** a zero `with_timeout` fails the call with
+  `Error::InvalidConfig` before sending, as a zero `request_timeout` and
+  `attempt_timeout` are refused: unset is the default, and zero would time
+  out every call.
 - The `User-Agent` is `rustcent/0.2`.
 - The new fields of `proxy::ConnectResult`, `token::ConnectionClaims` and
   `token::SubscriptionClaims` are on `#[non_exhaustive]` structs, built with

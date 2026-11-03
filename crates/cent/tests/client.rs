@@ -128,27 +128,53 @@ async fn bad_endpoints_and_tokens_fail_before_sending() {
     }))
     .await
     .unwrap_err();
+    // What a configured function returns and cannot be sent is refused as
+    // the configuration is: InvalidConfig, not retryable (spec 3.1).
     assert!(
-        matches!(&e, Error::Callback(c) if c.which() == "api_endpoint"),
+        matches!(&e, Error::InvalidConfig(_))
+            && e.to_string().contains("with_endpoint_fn returned")
+            && !retryable(&e),
         "{e}"
     );
+    let e = call(Config::with_endpoint_fn(|| async {
+        Ok("ftp://h/api".to_owned())
+    }))
+    .await
+    .unwrap_err();
+    assert!(matches!(&e, Error::InvalidConfig(_)), "{e}");
+    // The function's own error is its source, the message naming it.
     let e = call(Config::with_endpoint_fn(|| async {
         Err("discovery down".into())
     }))
     .await
     .unwrap_err();
-    assert!(e.to_string().contains("discovery down") && !retryable(&e));
-    let e = call(Config::new("http://h/api").bearer_token(|| async { Ok(String::new()) }))
+    assert!(
+        matches!(&e, Error::Function(f) if f.function() == "with_endpoint_fn"),
+        "{e}"
+    );
+    assert_eq!(e.to_string(), "with_endpoint_fn: discovery down");
+    assert!(!retryable(&e));
+    for token in ["", "a\nb", "a\u{7f}b"] {
+        let e = call(
+            Config::new("http://h/api").bearer_token(move || async move { Ok(token.to_owned()) }),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(&e, Error::InvalidConfig(_))
+                && e.to_string().contains("bearer_token returned")
+                && !retryable(&e),
+            "{token:?}: {e}"
+        );
+    }
+    let e = call(Config::new("http://h/api").bearer_token(|| async { Err("signer down".into()) }))
         .await
         .unwrap_err();
     assert!(
-        matches!(&e, Error::Callback(c) if c.which() == "bearer_token"),
+        matches!(&e, Error::Function(f) if f.function() == "bearer_token"),
         "{e}"
     );
-    let e = call(Config::new("http://h/api").bearer_token(|| async { Ok("a\nb".to_owned()) }))
-        .await
-        .unwrap_err();
-    assert!(matches!(e, Error::Callback(_)));
+    assert_eq!(e.to_string(), "bearer_token: signer down");
     // An I/O failure of the application's function is retryable.
     let e = call(Config::new("http://h/api").bearer_token(|| async {
         Err(std::io::Error::from(std::io::ErrorKind::ConnectionRefused).into())
@@ -613,6 +639,49 @@ async fn timeouts() {
         "{:?}",
         start.elapsed()
     );
+}
+
+/// Unset is the default timeout; zero, which would time out every call, is
+/// refused: `request_timeout` at creation, `with_timeout` and
+/// `attempt_timeout` at the call, before sending (spec 3.1).
+#[tokio::test]
+async fn zero_timeouts_are_refused() {
+    let fake = Fake::centrifugo();
+    assert!(Client::new(fake.config().request_timeout(Duration::ZERO)).is_err());
+    let client = Client::new(fake.config()).unwrap();
+    let zero = client.with_timeout(Duration::ZERO);
+    let e = zero.info(InfoRequest::new()).await.unwrap_err();
+    assert!(
+        matches!(&e, Error::InvalidConfig(_)) && e.to_string().contains("with_timeout is zero"),
+        "{e}"
+    );
+    assert!(!retryable(&e));
+    let mut b = zero.new_batch(cent::BatchOptions::default());
+    let p = b.info(InfoRequest::new());
+    assert!(matches!(b.send().await, Err(Error::InvalidConfig(_))));
+    assert!(matches!(p.result(), Err(Error::InvalidConfig(_))));
+    let e = zero
+        .broadcast_with_retry(
+            cent::BroadcastRequest::new(["a"]).data(raw("1")),
+            cent::BroadcastRetryOptions::default(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(&e, Error::InvalidConfig(_)), "{e}");
+    let e = client
+        .broadcast_with_retry(
+            cent::BroadcastRequest::new(["a"]).data(raw("1")),
+            cent::BroadcastRetryOptions::default().attempt_timeout(Duration::ZERO),
+        )
+        .await
+        .unwrap_err();
+    assert!(e.to_string().contains("attempt_timeout is zero"), "{e}");
+    let mut pages = zero.device_list_all(cent::DeviceListRequest::new());
+    assert!(matches!(
+        pages.next().await,
+        Some(Err(Error::InvalidConfig(_)))
+    ));
+    assert!(fake.requests().is_empty(), "nothing sent");
 }
 
 #[tokio::test]

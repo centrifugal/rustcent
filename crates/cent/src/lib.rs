@@ -130,7 +130,7 @@ pub use broadcast::{BroadcastFailedChannelsError, BroadcastResult, ChannelResult
 pub use client::{AutoBatch, Client, Config, EndpointSource, RequestInfo, TokenSource};
 pub use command::Command;
 pub use error::{
-    ApiError, BoxError, CallbackError, DecodeError, Error, HttpError, InvalidConfigError,
+    ApiError, BoxError, DecodeError, Error, FunctionError, HttpError, InvalidConfigError,
     InvalidRequestError, NetworkError, PayloadError, RetryStoppedError, TimeoutError, retryable,
 };
 pub use handler::Handler;

@@ -324,6 +324,7 @@ impl Client {
         if max_attempts == 0 {
             return Err(Error::invalid_request("broadcast", "max_attempts is zero"));
         }
+        self.check_bound()?;
         if options.attempt_timeout.is_some_and(|t| t.is_zero()) {
             return Err(Error::invalid_request(
                 "broadcast",

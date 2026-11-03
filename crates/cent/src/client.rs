@@ -16,7 +16,7 @@ use tokio::time::Instant;
 
 use crate::autobatch::Batcher;
 use crate::broadcast::ApiErrorWire;
-use crate::error::{CallbackError, DecodeError, HttpError, NetworkError, Source};
+use crate::error::{DecodeError, FunctionError, HttpError, NetworkError, Source};
 use crate::http_client::{BoxFuture, DefaultHttpClient, HttpClient, MAX_ERROR_BODY};
 use crate::{ApiError, BoxError, Error, Request};
 
@@ -209,7 +209,9 @@ impl Config {
     /// longer or shorter; a deadline, [`Client::with_deadline`], only
     /// shortens it - so a handle made with a deadline minutes away still
     /// gives up on a stuck Centrifugo after `request_timeout`. To let calls
-    /// take longer, raise it, or give them a timeout of their own.
+    /// take longer, raise it, or give them a timeout of their own. It cannot
+    /// be turned off: unset is the default, and zero is refused by
+    /// [`Client::new`].
     #[must_use]
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = Some(timeout);
@@ -608,7 +610,8 @@ impl Client {
 
     /// Returns a handle to the same client whose calls each time out after
     /// `timeout`: the call's own timeout, which replaces the configured
-    /// `request_timeout` for it, longer or shorter (spec 3.2). A deadline set
+    /// `request_timeout` for it, longer or shorter (spec 3.2). Zero is
+    /// refused: the calls fail with [`Error::InvalidConfig`]. A deadline set
     /// with [`with_deadline`](Self::with_deadline) still ends a call sooner.
     /// It is cheap: make one per call that needs it.
     ///
@@ -651,6 +654,17 @@ impl Client {
             shared: Arc::clone(&self.shared),
             bound,
         }
+    }
+
+    /// Refuses a zero [`with_timeout`](Self::with_timeout), which would time
+    /// out every call: unset is the default, `request_timeout` (spec 3.1).
+    pub(crate) fn check_bound(&self) -> Result<(), Error> {
+        if self.bound.timeout.is_some_and(|t| t.is_zero()) {
+            return Err(Error::invalid_config(
+                "with_timeout is zero, which times out every call: give a timeout above zero, or leave it unset for request_timeout",
+            ));
+        }
+        Ok(())
     }
 
     /// The deadline of a call starting now: its own timeout, or
@@ -753,6 +767,7 @@ impl Client {
         &self,
         request: R,
     ) -> Result<T, Error> {
+        self.check_bound()?;
         request.validate()?;
         let _call = self.shared.enter()?;
         let engine = self.engine()?;
@@ -833,8 +848,11 @@ impl Client {
                 let url = f
                     .endpoint()
                     .await
-                    .map_err(|e| callback("api_endpoint", e.into()))?;
-                check_endpoint(&url).map_err(|e| callback("api_endpoint", message(e)))?
+                    .map_err(|e| function_error(ENDPOINT_FN, e.into()))?;
+                // What the function returns is the configuration: one which
+                // cannot be sent is refused as Client::new refuses it.
+                check_endpoint(&url)
+                    .map_err(|e| Error::invalid_config(format!("{ENDPOINT_FN} returned {e}")))?
             }
         };
         let mut auth = None;
@@ -842,22 +860,19 @@ impl Client {
             let token = source
                 .token()
                 .await
-                .map_err(|e| callback("bearer_token", e.into()))?;
+                .map_err(|e| function_error(TOKEN_FN, e.into()))?;
             match header_value(&format!("Bearer {token}")) {
                 Some(v) if !token.is_empty() => auth = Some(v),
                 _ => {
-                    return Err(callback(
-                        "bearer_token",
-                        message(
-                            "returned an empty token, or one with a line break or another control character",
-                        ),
-                    ));
+                    return Err(Error::invalid_config(format!(
+                        "{TOKEN_FN} returned an empty token, or one with a line break or another control character"
+                    )));
                 }
             }
         }
         let mut request = http::Request::post(format!("{base}/{method}"))
             .body(Bytes::from(body))
-            .map_err(|e| callback("api_endpoint", Arc::new(e)))?;
+            .map_err(|e| Error::invalid_config(format!("api endpoint {base:?}: {e}")))?;
         *request.headers_mut() = shared.headers.clone();
         if let Some(auth) = auth {
             request.headers_mut().insert(AUTHORIZATION, auth);
@@ -905,13 +920,13 @@ fn trim_ascii(b: &[u8]) -> &[u8] {
     &b[start..end]
 }
 
-/// An error source holding only a message.
-fn message(m: impl Into<String>) -> Source {
-    Arc::from(BoxError::from(m.into()))
-}
+/// The functions of the configuration, as [`Config`] names them: the
+/// messages of their errors name them so.
+const ENDPOINT_FN: &str = "with_endpoint_fn";
+const TOKEN_FN: &str = "bearer_token";
 
-fn callback(which: &'static str, source: Source) -> Error {
-    Error::Callback(CallbackError::new(which, source))
+fn function_error(function: &'static str, source: Source) -> Error {
+    Error::Function(FunctionError::new(function, source))
 }
 
 /// The envelope every method replies with.

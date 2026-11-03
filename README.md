@@ -154,7 +154,9 @@ them. A deadline only shortens a call, never extends it: each call still
 times out after `request_timeout`, or its own `with_timeout`, when that
 comes first - so a handle with a deadline minutes away still gives up on a
 stuck Centrifugo in time. To let calls take longer, raise `request_timeout`
-or give them a timeout of their own. A timeout around a call's future,
+or give them a timeout of their own. A timeout cannot be turned off: unset is
+the default, and a zero `request_timeout`, `with_timeout` or `attempt_timeout`
+is refused, with `Error::InvalidConfig` or `Error::InvalidRequest`. A timeout around a call's future,
 `tokio::time::timeout`, ends it too.
 
 `broadcast_with_retry` makes several requests in one call. Each attempt times
@@ -176,9 +178,9 @@ call returns at its deadline, and the batch goes on for the others.
 | `Http` | the request did not reach the API method: `status`, `body`, `headers`; `err.is_unauthorized()` for refused credentials |
 | `Decode` | the reply was not Centrifugo's - usually `api_endpoint` points elsewhere |
 | `InvalidRequest` | the client could tell the request is wrong and did not send it: a field the protos mark "Required." without a value (`limit_strategy.rate_limit.policies[0].rate is required`), a payload which is not JSON |
-| `InvalidConfig` | the client was not created, or is used where it cannot work: the message names the option and the fix |
+| `InvalidConfig` | the client refuses to work as configured: it was not created, it is used where it cannot work, or the `with_endpoint_fn` or `bearer_token` function returned an endpoint or token it cannot send; the message names the option and the fix |
 | `Timeout`, `Network`, `Closed` | as their names say |
-| `Callback` | the application's `api_endpoint` or `bearer_token` function failed |
+| `Function` | the application's `with_endpoint_fn` or `bearer_token` function returned an error: its source, the message naming the function |
 
 Centrifugo adds error codes over time: an unknown code is still an
 `Error::Api`, so match the codes you handle and treat the rest by kind.

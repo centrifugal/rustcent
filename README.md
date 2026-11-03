@@ -57,6 +57,38 @@ documentation. A request's `new` takes the fields Centrifugo requires, and a
 method per field sets the others. Create the client once and share it: it is
 cheap to clone, and safe for concurrent use.
 
+A field with a fixed set of values has a constant per value - `OP_ADD`,
+`PROVIDER_FCM`, `PLATFORM_IOS`, and `cent::proxy::ENCODING_BINARY` in the
+proxy - generated from the protos. The fields stay strings: a value
+Centrifugo accepts which no constant names can still be sent.
+
+## Pages and stream positions
+
+The paged methods - `history`, `device_list`, `device_topic_list`,
+`user_topic_list` and `map_read_state` - each have an `*_all` method reading
+every item, a page at a time: a page is read when the iteration reaches it,
+and an error ends the iteration. `publish`, `history`, `map_read_state` and
+`map_read_stream` results give their `position()`, from which to read on:
+
+```rust,no_run
+# async fn run(client: cent::Client, data: Box<cent::RawValue>) -> Result<(), cent::Error> {
+use cent::{HistoryRequest, PublishRequest};
+
+let published = client.publish(PublishRequest::new("news").data(data)).await?;
+// Later: what came after that publication.
+let mut after = client.history_all(HistoryRequest::new("news").limit(100).since(published.position()));
+while let Some(publication) = after.next().await {
+    let publication = publication?;
+    println!("{}", publication.offset);
+}
+# Ok(()) }
+```
+
+The blocking client's `*_all` methods return an `Iterator`. Items added or
+removed while iterating may or may not be seen. A position whose epoch is no
+longer the stream's fails with `ApiError::UNRECOVERABLE_POSITION`: the stream
+was reset, and reading from its start is the only way on.
+
 ## Payloads
 
 `data`, `info`, `meta` and the other payloads are JSON, as `Box<RawValue>` of

@@ -95,6 +95,7 @@ mod error;
 mod handler;
 #[cfg(feature = "client")]
 mod http_client;
+mod pages;
 mod payload;
 pub mod proxy;
 mod request;
@@ -136,6 +137,8 @@ pub use error::{
 pub use handler::Handler;
 #[cfg(feature = "client")]
 pub use http_client::{BoxFuture, DefaultHttpClient, HttpClient};
+#[cfg(feature = "client")]
+pub use pages::Pager;
 pub use payload::{PayloadExt, json};
 pub use request::Request;
 #[cfg(feature = "client")]

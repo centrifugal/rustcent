@@ -53,8 +53,11 @@ passes; if you find yourself about to break one, stop and say so instead.
    Every timeout is `Error::Timeout`, an `HttpClient`'s own included.
    `broadcast_with_retry`'s attempts each time out after `attempt_timeout`
    or `request_timeout`, the call's deadline (`with_timeout` from its start,
-   `with_deadline`) ending them sooner. An automatic batch request lasts
-   until the latest of its calls' deadlines, at least `request_timeout`.
+   `with_deadline`) ending them sooner. The `*_all` pagers take no per-call
+   timeout - a handle's `with_timeout` does not apply to them - and each page
+   times out after `Pager::page_timeout` or `request_timeout`. An automatic
+   batch request lasts until the latest of its calls' deadlines, at least
+   `request_timeout`.
 5. **A payload is carried exactly.** Payloads are `Box<RawValue>` in and out:
    their text, number text included, is sent and returned as it is. JSON
    `null` is `Some` of a null.

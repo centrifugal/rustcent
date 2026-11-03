@@ -676,11 +676,15 @@ async fn zero_timeouts_are_refused() {
         .await
         .unwrap_err();
     assert!(e.to_string().contains("attempt_timeout is zero"), "{e}");
-    let mut pages = zero.device_list_all(cent::DeviceListRequest::new());
-    assert!(matches!(
-        pages.next().await,
-        Some(Err(Error::InvalidConfig(_)))
-    ));
+    let mut pages = client
+        .device_list_all(cent::DeviceListRequest::new())
+        .page_timeout(Duration::ZERO);
+    let e = pages.next().await.unwrap().unwrap_err();
+    assert!(
+        matches!(&e, Error::InvalidRequest(_)) && e.to_string().contains("page_timeout is zero"),
+        "{e}"
+    );
+    assert!(pages.next().await.is_none());
     assert!(fake.requests().is_empty(), "nothing sent");
 }
 

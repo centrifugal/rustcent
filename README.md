@@ -156,13 +156,20 @@ comes first - so a handle with a deadline minutes away still gives up on a
 stuck Centrifugo in time. To let calls take longer, raise `request_timeout`
 or give them a timeout of their own. A timeout cannot be turned off: unset is
 the default, and a zero `request_timeout`, `with_timeout` or `attempt_timeout`
-is refused, with `Error::InvalidConfig` or `Error::InvalidRequest`. A timeout around a call's future,
+is refused, with `Error::InvalidConfig` or `Error::InvalidRequest`, and so is
+a zero `page_timeout`. A timeout around a call's future,
 `tokio::time::timeout`, ends it too.
 
 `broadcast_with_retry` makes several requests in one call. Each attempt times
 out after `attempt_timeout`, which replaces `request_timeout` for it, longer
 or shorter. The call's deadline - `with_timeout` from its start, or
 `with_deadline` - bounds them all, waits between them included.
+
+The `*_all` iterators make a request per page and take no timeout as a
+whole: an iteration lasts as long as your loop, so a handle's `with_timeout`
+does not apply to it. `page_timeout` bounds each page instead, replacing
+`request_timeout` for it, as `attempt_timeout` does for an attempt; zero is
+refused. A `with_deadline` the handle holds still ends the iteration.
 
 With automatic batching a call keeps the deadline it has alone. The batch
 request carrying it lasts until the latest of its calls' deadlines, and at

@@ -329,6 +329,133 @@ async fn items_carry_their_positions() {
     }
 }
 
+/// A fake answering every page after `delay`: two devices a page, two
+/// pages.
+fn slow(delay: std::time::Duration) -> Fake {
+    Fake::new(move |r| {
+        let next = if r.body.get("cursor").is_none() {
+            "1"
+        } else {
+            ""
+        };
+        common::Answer::After(
+            delay,
+            Box::new(ok(&json!({"result": {
+                "items": [{"id": "a"}, {"id": "b"}],
+                "next_cursor": next,
+            }})
+            .to_string())),
+        )
+    })
+}
+
+/// Each page's request is bounded by `page_timeout`, replacing
+/// `request_timeout` for it, longer or shorter, and by `request_timeout`
+/// without one; the iteration takes no per-call timeout, so a handle's
+/// `with_timeout` does not bound its pages; a zero `page_timeout` is refused
+/// before sending (spec 3.2, 3.8).
+#[tokio::test]
+async fn pages_are_bounded_by_page_timeout() {
+    use std::time::Duration;
+    let ms = Duration::from_millis;
+    let fake = slow(ms(100));
+    let short = Client::new(fake.config().request_timeout(ms(20))).unwrap();
+    let long = Client::new(fake.config().request_timeout(Duration::from_secs(60))).unwrap();
+    let id = |d: &Device| d.id.clone();
+
+    // Longer than request_timeout: each slow page finishes.
+    let (items, err) = drain(
+        short
+            .device_list_all(DeviceListRequest::new())
+            .page_timeout(ms(1000)),
+        id,
+    )
+    .await;
+    assert!(err.is_none(), "{err:?}");
+    assert_eq!(items, ["a", "b", "a", "b"]);
+    // Without it, request_timeout bounds each page.
+    let (items, err) = drain(short.device_list_all(DeviceListRequest::new()), id).await;
+    assert!(
+        items.is_empty() && err.as_ref().is_some_and(Error::is_timeout),
+        "{err:?}"
+    );
+    // Shorter than request_timeout: it ends the page.
+    let start = std::time::Instant::now();
+    let (_, err) = drain(
+        long.device_list_all(DeviceListRequest::new())
+            .page_timeout(ms(20)),
+        id,
+    )
+    .await;
+    assert!(err.as_ref().is_some_and(Error::is_timeout), "{err:?}");
+    assert!(start.elapsed() < ms(90), "{:?}", start.elapsed());
+    // A handle's with_timeout, a call's own, does not bound the pages.
+    let (items, err) = drain(
+        long.with_timeout(ms(20))
+            .device_list_all(DeviceListRequest::new()),
+        id,
+    )
+    .await;
+    assert!(err.is_none(), "{err:?}");
+    assert_eq!(items.len(), 4);
+    // A deadline of the handle still ends the iteration.
+    let deadline = std::time::Instant::now() + ms(150);
+    let (items, err) = drain(
+        long.with_deadline(deadline)
+            .device_list_all(DeviceListRequest::new())
+            .page_timeout(ms(1000)),
+        id,
+    )
+    .await;
+    assert_eq!(items, ["a", "b"]);
+    assert!(err.as_ref().is_some_and(Error::is_timeout), "{err:?}");
+
+    // Zero is refused, before sending.
+    let sent = fake.requests().len();
+    let (_, err) = drain(
+        long.history_all(HistoryRequest::new("c").limit(1))
+            .page_timeout(Duration::ZERO),
+        |p| p.offset.to_string(),
+    )
+    .await;
+    assert!(
+        matches!(&err, Some(Error::InvalidRequest(i)) if i.method() == "history"),
+        "{err:?}"
+    );
+    let (_, err) = drain(
+        long.device_list_all(DeviceListRequest::new())
+            .page_timeout(Duration::ZERO),
+        id,
+    )
+    .await;
+    assert!(
+        matches!(&err, Some(Error::InvalidRequest(i)) if i.method() == "device_list"),
+        "{err:?}"
+    );
+    assert_eq!(fake.requests().len(), sent, "nothing sent");
+}
+
+#[cfg(feature = "blocking")]
+#[test]
+fn the_blocking_pager_takes_page_timeout() {
+    use std::time::Duration;
+    let fake = slow(Duration::from_millis(100));
+    let client =
+        cent::blocking::Client::new(fake.config().request_timeout(Duration::from_millis(20)))
+            .unwrap();
+    let ids: Vec<String> = client
+        .device_list_all(DeviceListRequest::new())
+        .page_timeout(Duration::from_secs(1))
+        .map(|d| d.unwrap().id)
+        .collect();
+    assert_eq!(ids, ["a", "b", "a", "b"]);
+    let mut zero = client
+        .device_list_all(DeviceListRequest::new())
+        .page_timeout(Duration::ZERO);
+    assert!(matches!(zero.next(), Some(Err(Error::InvalidRequest(_)))));
+    assert!(zero.next().is_none());
+}
+
 #[test]
 fn positions() {
     let want = |p: StreamPosition| (p.offset, p.epoch);

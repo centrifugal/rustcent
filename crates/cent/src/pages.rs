@@ -152,6 +152,7 @@ pub use pager::Pager;
 #[cfg(feature = "client")]
 mod pager {
     use std::fmt;
+    use std::time::Duration;
 
     use serde::de::DeserializeOwned;
 
@@ -185,11 +186,14 @@ mod pager {
     /// `tokio::time::timeout` around it, say - loses nothing: the next call
     /// reads the same page again.
     ///
-    /// Each page is a call of its own, bounded as the client's calls are:
-    /// each by `request_timeout`, or by
-    /// [`with_timeout`](Client::with_timeout) in its place, and all together
-    /// by [`with_deadline`](Client::with_deadline), which ends the iteration
-    /// when it passes.
+    /// Each page is a request of its own, bounded by
+    /// [`page_timeout`](Self::page_timeout) when it is set, by
+    /// `request_timeout` otherwise (spec 3.2, 3.8). The iteration as a whole
+    /// takes no timeout: it lasts as long as the caller's loop. So a handle's
+    /// [`with_timeout`](Client::with_timeout), a call's own timeout, does not
+    /// apply to it - give the pages a `page_timeout` instead. A
+    /// [`with_deadline`](Client::with_deadline) the handle holds still ends
+    /// the iteration when it passes, and a page with it.
     pub struct Pager<T> {
         items: std::vec::IntoIter<T>,
         source: Option<Box<dyn Source<T>>>,
@@ -212,6 +216,40 @@ mod pager {
                 source: Some(Box::new(source)),
                 refused: None,
             }
+        }
+
+        /// Bounds each page's request by `timeout`, replacing
+        /// `request_timeout` for it, longer or shorter, as `attempt_timeout`
+        /// does for a retry's attempt (spec 3.8). A deadline of the handle
+        /// still ends a page sooner. Zero, which would time out every page,
+        /// is refused: the first [`next`](Self::next) returns an
+        /// [`Error::InvalidRequest`], having sent nothing.
+        ///
+        /// ```no_run
+        /// # async fn f(client: cent::Client) -> Result<(), cent::Error> {
+        /// use std::time::Duration;
+        /// let mut devices = client
+        ///     .device_list_all(cent::DeviceListRequest::new().limit(1000))
+        ///     .page_timeout(Duration::from_secs(30));
+        /// while let Some(device) = devices.next().await {
+        ///     println!("{}", device?.id);
+        /// }
+        /// # Ok(()) }
+        /// ```
+        #[must_use]
+        pub fn page_timeout(mut self, timeout: Duration) -> Self {
+            if let Some(source) = &mut self.source {
+                if timeout.is_zero() {
+                    self.refused = Some(Error::invalid_request(
+                        source.method(),
+                        "page_timeout is zero, which times out every page: give a timeout above zero, or leave it unset for request_timeout",
+                    ));
+                    self.source = None;
+                } else {
+                    source.page_timeout(timeout);
+                }
+            }
+            self
         }
 
         /// A pager which returns `error` and ends, having sent nothing.
@@ -259,6 +297,11 @@ mod pager {
     /// Where pages come from: a request, and how a reply gives the next.
     trait Source<T>: Send {
         fn fetch(&mut self) -> BoxFuture<'_, Result<Page<T>, Error>>;
+        /// The method paged.
+        fn method(&self) -> &'static str;
+        /// Bounds each page's request by `timeout`, instead of
+        /// `request_timeout`.
+        fn page_timeout(&mut self, timeout: Duration);
     }
 
     /// A method paged by a cursor: `req`, then `req` with the cursor of
@@ -277,6 +320,14 @@ mod pager {
         Res: DeserializeOwned + Default + Send,
         T: Send,
     {
+        fn method(&self) -> &'static str {
+            Req::METHOD
+        }
+
+        fn page_timeout(&mut self, timeout: Duration) {
+            self.client = self.client.with_bound(self.client.bound().timeout(timeout));
+        }
+
         fn fetch(&mut self) -> BoxFuture<'_, Result<Page<T>, Error>> {
             Box::pin(async move {
                 let res: Res = self.client.call(self.req.clone()).await?;
@@ -299,6 +350,14 @@ mod pager {
     }
 
     impl Source<HistoryItem> for BySince {
+        fn method(&self) -> &'static str {
+            "history"
+        }
+
+        fn page_timeout(&mut self, timeout: Duration) {
+            self.client = self.client.with_bound(self.client.bound().timeout(timeout));
+        }
+
         fn fetch(&mut self) -> BoxFuture<'_, Result<Page<HistoryItem>, Error>> {
             Box::pin(async move {
                 let res: HistoryResult = self.client.call(self.req.clone()).await?;
@@ -325,6 +384,15 @@ mod pager {
     }
 
     impl Client {
+        /// The handle an iteration's pages are read with: without the
+        /// handle's own timeout, a call's, which does not bound an iteration
+        /// or its pages (spec 3.2, 3.8); its deadline kept.
+        fn for_pages(&self) -> Client {
+            let mut bound = self.bound();
+            bound.timeout = None;
+            self.with_bound(bound)
+        }
+
         /// The publications of a channel's history, oldest first, `limit` at a
         /// time: from `since` when it is set, from the start of what the
         /// channel keeps otherwise. A page is read when the iteration reaches
@@ -372,7 +440,7 @@ mod pager {
                 ));
             }
             Pager::new(BySince {
-                client: self.clone(),
+                client: self.for_pages(),
                 req: request,
             })
         }
@@ -386,7 +454,7 @@ mod pager {
         #[must_use]
         pub fn device_list_all(&self, request: DeviceListRequest) -> Pager<Device> {
             Pager::new(ByCursor {
-                client: self.clone(),
+                client: self.for_pages(),
                 req: request,
                 page: |_, r: DeviceListResult| (r.items, r.next_cursor),
                 set_cursor: |r: &mut DeviceListRequest, c| r.cursor = c,
@@ -400,7 +468,7 @@ mod pager {
         #[must_use]
         pub fn device_topic_list_all(&self, request: DeviceTopicListRequest) -> Pager<DeviceTopic> {
             Pager::new(ByCursor {
-                client: self.clone(),
+                client: self.for_pages(),
                 req: request,
                 page: |_, r: DeviceTopicListResult| (r.items, r.next_cursor),
                 set_cursor: |r: &mut DeviceTopicListRequest, c| r.cursor = c,
@@ -414,7 +482,7 @@ mod pager {
         #[must_use]
         pub fn user_topic_list_all(&self, request: UserTopicListRequest) -> Pager<UserTopic> {
             Pager::new(ByCursor {
-                client: self.clone(),
+                client: self.for_pages(),
                 req: request,
                 page: |_, r: UserTopicListResult| (r.items, r.next_cursor),
                 set_cursor: |r: &mut UserTopicListRequest, c| r.cursor = c,
@@ -439,7 +507,7 @@ mod pager {
         #[must_use]
         pub fn map_read_state_all(&self, request: MapReadStateRequest) -> Pager<MapStateItem> {
             Pager::new(ByCursor {
-                client: self.clone(),
+                client: self.for_pages(),
                 req: request,
                 page: |req: &mut MapReadStateRequest, r: MapReadStateResult| {
                     // The first page pins the others, unless the caller did.

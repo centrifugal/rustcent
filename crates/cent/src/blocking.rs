@@ -282,6 +282,17 @@ pub struct Pager<T> {
     client: Client,
 }
 
+impl<T: Send + 'static> Pager<T> {
+    /// Bounds each page's request by `timeout`, replacing `request_timeout`
+    /// for it; zero is refused - see [`crate::Pager::page_timeout`]. The
+    /// handle's `with_timeout` does not apply to an iteration.
+    #[must_use]
+    pub fn page_timeout(mut self, timeout: Duration) -> Self {
+        self.inner = self.inner.map(|p| p.page_timeout(timeout));
+        self
+    }
+}
+
 impl<T: Send + 'static> Iterator for Pager<T> {
     type Item = Result<T, Error>;
 

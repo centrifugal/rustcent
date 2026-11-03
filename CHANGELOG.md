@@ -96,7 +96,11 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
   below 1 and `reverse` before sending. `history_all` yields `HistoryItem`s,
   each publication with its `position()`, and `map_read_state_all`
   `MapStateItem`s, each entry with the `state` position it was read at; both
-  deref to the publication or entry. `map_read_state_all` reads every
+  deref to the publication or entry. An iteration takes no timeout as a
+  whole, so a handle's `with_timeout` does not apply to it: `page_timeout`
+  on the pager bounds each page's request, replacing `request_timeout` for
+  it, zero refused, and a handle's `with_deadline` still ends the
+  iteration. `map_read_state_all` reads every
   page after the first at the first one's revision, unless the request sets
   one, so that a map state reset between pages fails with code 112 instead
   of mixing two states.

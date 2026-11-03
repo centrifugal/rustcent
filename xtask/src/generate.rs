@@ -1031,14 +1031,55 @@ fn constructor(s: &Schema, name: &str) -> Result<String, String> {
     Ok(format!("{name}::new({})", args.join(", ")))
 }
 
-/// A request for a command: its constructor, with data where the client
-/// requires it.
-fn request_expr(s: &Schema, c: &ApiCommand) -> Result<String, String> {
-    let mut e = constructor(s, &c.request)?;
-    if VALIDATED.contains(&c.method.as_str()) {
-        e.push_str(".data(raw(\"{}\"))");
+/// `Message::new(...)` with every field set, nested messages included, so
+/// that the test sends every field of every request (spec 15). A message
+/// holding itself, as `FilterNode`, is set once and then only constructed.
+fn filled(s: &Schema, name: &str, visiting: &mut Vec<String>) -> Result<String, String> {
+    if visiting.iter().any(|v| v == name) {
+        return constructor(s, name);
     }
-    Ok(e)
+    visiting.push(name.to_owned());
+    let m = s
+        .message(name)
+        .ok_or_else(|| format!("no message {name}"))?;
+    let mut args = Vec::new();
+    let mut setters = String::new();
+    for f in &m.fields {
+        let one = |visiting: &mut Vec<String>| -> Result<String, String> {
+            if s.message(&f.typ).is_some() && wrapper_scalar(s, &f.typ).is_none() {
+                filled(s, &f.typ, visiting)
+            } else {
+                dummy(
+                    s,
+                    &Field {
+                        repeated: false,
+                        map_key: None,
+                        ..f.clone()
+                    },
+                )
+            }
+        };
+        let v = one(visiting)?;
+        let v = if f.map_key.is_some() {
+            format!("[(\"k\", {v})]")
+        } else if f.repeated {
+            format!("[{v}]")
+        } else {
+            v
+        };
+        if is_required(f) {
+            args.push(v);
+        } else {
+            let _ = write!(setters, ".{}({v})", ident(&f.name));
+        }
+    }
+    visiting.pop();
+    Ok(format!("{name}::new({}){setters}", args.join(", ")))
+}
+
+/// A request for a command, every field set.
+fn request_expr(s: &Schema, c: &ApiCommand) -> Result<String, String> {
+    filled(s, &c.request, &mut Vec::new())
 }
 
 #[allow(clippy::too_many_lines)] // one block per test, in order

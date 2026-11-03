@@ -13,13 +13,27 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
 
 ### Changed
 
-- No call or type changes incompatibly. Spec 0.3's two breaking changes for
-  typed SDKs do not apply to rustcent: `device_update`'s `user_update`,
-  `timezone_update`, `locale_update` and `meta_update` were already
-  `Option`s sent whenever set - an empty one as `{}`, clearing the timezone,
-  locale or meta, or detaching the devices from their user - and the fields
-  the protos mark "Required." were already arguments of `new`, so no request
-  fails before sending which did not before.
+- **Breaking:** a field the protos mark "Required." is checked for a value
+  before sending: `new("")`, a zero number, an empty list or an empty
+  message fails with `Error::InvalidRequest` naming its path -
+  `channel is required`,
+  `limit_strategy.rate_limit.policies[0].rate is required` - from a call, a
+  batch (failing the batch before sending, as before) and a `Command`. A
+  required argument of `new` made the caller pass the field, not give it a
+  value, and an empty field is a missing one on the wire. Nested messages
+  are checked when they are sent, list elements each. Not checked: the
+  fields whose empty value has a meaning (`DeviceUserUpdate::new("")`
+  detaches the devices), and the fields "Required unless ..." or "Required
+  when ...". The checks are generated from the protos and are no stricter
+  than Centrifugo PRO's own.
+- **Breaking:** a message field set to an empty message is no longer sent,
+  as when it is `None`: `.limit_strategy(PushLimitStrategy::new())` sent
+  `"limit_strategy": {}`, which Centrifugo refuses with code 107 for want of
+  `expire_at`. The presence wrappers are still sent whenever set, even empty:
+  `BoolValue` and `Int32Value` fields, and `device_update`'s `user_update`,
+  `timezone_update`, `locale_update` and `meta_update`, an empty one of which
+  clears the timezone, locale or meta or detaches the devices from their
+  user. No type changes.
 - The `User-Agent` is `rustcent/0.2`.
 - The new fields of `proxy::ConnectResult`, `token::ConnectionClaims` and
   `token::SubscriptionClaims` are on `#[non_exhaustive]` structs, built with

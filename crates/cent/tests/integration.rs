@@ -908,7 +908,8 @@ async fn pro_devices_and_push() {
 /// Pushes with every part of a request a check before sending could look
 /// into - rate and time limits, each setting exactly what Centrifugo
 /// requires, so that a check stricter than Centrifugo's fails here - a device
-/// detached by an empty user update, and devices read page by page.
+/// detached by an empty user update, and devices read page by page. An
+/// empty limit strategy is left out of a push.
 #[tokio::test]
 async fn pro_push_parts() {
     skip_unless_enabled!();
@@ -982,6 +983,23 @@ async fn pro_push_parts() {
             .await
             .unwrap();
     }
+    // An empty limit strategy is not sent: Centrifugo would refuse
+    // "limit_strategy": {} with code 107, for want of expire_at.
+    let push = c
+        .send_push_notification(
+            SendPushNotificationRequest::new(
+                PushRecipient::new().filter(by_user()),
+                PushNotification::new()
+                    .webpush(WebPushPushNotification::new(raw(&json!({"title": "hi"})))),
+            )
+            .limit_strategy(PushLimitStrategy::new())
+            .send_at(now() + 3600),
+        )
+        .await
+        .unwrap();
+    c.cancel_push(CancelPushRequest::new(&push.uid))
+        .await
+        .unwrap();
 
     // An empty user update is sent, as {}, and detaches the device.
     c.device_update(

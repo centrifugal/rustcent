@@ -172,6 +172,29 @@ impl PublishRequest {
     }
 }
 
+impl crate::wire::Empty for PublishRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+            && self.data.is_none()
+            && crate::wire::is_default(&self.b64data)
+            && crate::wire::is_default(&self.skip_history)
+            && self.tags.is_empty()
+            && crate::wire::is_default(&self.idempotency_key)
+            && crate::wire::is_default(&self.delta)
+            && crate::wire::is_default(&self.version)
+            && crate::wire::is_default(&self.version_epoch)
+    }
+}
+
+impl crate::validate::Required for PublishRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// PublishResult is the result of a successful publish.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -190,6 +213,12 @@ pub struct PublishResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub epoch: String,
+}
+
+impl crate::wire::Empty for PublishResult {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.offset) && crate::wire::is_default(&self.epoch)
+    }
 }
 
 /// BroadcastRequest publishes the same data into many channels.
@@ -360,6 +389,29 @@ impl BroadcastRequest {
     }
 }
 
+impl crate::wire::Empty for BroadcastRequest {
+    fn is_empty(&self) -> bool {
+        self.channels.is_empty()
+            && self.data.is_none()
+            && crate::wire::is_default(&self.b64data)
+            && crate::wire::is_default(&self.skip_history)
+            && self.tags.is_empty()
+            && crate::wire::is_default(&self.idempotency_key)
+            && crate::wire::is_default(&self.delta)
+            && crate::wire::is_default(&self.version)
+            && crate::wire::is_default(&self.version_epoch)
+    }
+}
+
+impl crate::validate::Required for BroadcastRequest {
+    fn missing(&self) -> Option<String> {
+        if self.channels.is_empty() {
+            return Some("channels".into());
+        }
+        None
+    }
+}
+
 /// FilterNode is a tree describing a predicate over client labels. Used as
 /// label_filter on Subscribe, Unsubscribe, Disconnect, Refresh and
 /// Connections requests. A node is either a leaf comparison (key, cmp, val or
@@ -476,6 +528,17 @@ impl FilterNode {
     }
 }
 
+impl crate::wire::Empty for FilterNode {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.op)
+            && crate::wire::is_default(&self.key)
+            && crate::wire::is_default(&self.cmp)
+            && crate::wire::is_default(&self.val)
+            && self.vals.is_empty()
+            && self.nodes.is_empty()
+    }
+}
+
 /// SubscribeRequest subscribes active sessions of a user to a channel
 /// (server-side subscription). It does not create a streaming subscription
 /// for the caller.
@@ -543,11 +606,15 @@ pub struct SubscribeRequest {
     )]
     pub b64data: String,
     /// The stream position to recover publications from.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub recover_since: Option<StreamPosition>,
     /// `override` dynamically overrides some channel options set in the
     /// Centrifugo configuration.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub r#override: Option<SubscribeOptionOverride>,
     /// `session` limits the call to the connection with this session ID. user
     /// is still required.
@@ -559,7 +626,9 @@ pub struct SubscribeRequest {
     pub session: String,
     /// `label_filter` restricts the call to clients whose labels match this
     /// filter. Centrifugo PRO only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub label_filter: Option<FilterNode>,
     /// `all_users`, when user is empty, targets every connection on every node
     /// instead of the anonymous-only bucket. No effect when user is non-empty.
@@ -685,6 +754,33 @@ impl SubscribeRequest {
     }
 }
 
+impl crate::wire::Empty for SubscribeRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+            && crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.expire_at)
+            && self.info.is_none()
+            && crate::wire::is_default(&self.b64info)
+            && crate::wire::is_default(&self.client)
+            && self.data.is_none()
+            && crate::wire::is_default(&self.b64data)
+            && crate::wire::absent(&self.recover_since)
+            && crate::wire::absent(&self.r#override)
+            && crate::wire::is_default(&self.session)
+            && crate::wire::absent(&self.label_filter)
+            && crate::wire::is_default(&self.all_users)
+    }
+}
+
+impl crate::validate::Required for SubscribeRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// SubscribeOptionOverride overrides channel options for a server-side
 /// subscription. Unset fields keep the value from the channel configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -777,10 +873,26 @@ impl SubscribeOptionOverride {
     }
 }
 
+impl crate::wire::Empty for SubscribeOptionOverride {
+    fn is_empty(&self) -> bool {
+        self.presence.is_none()
+            && self.join_leave.is_none()
+            && self.force_recovery.is_none()
+            && self.force_positioning.is_none()
+            && self.force_push_join_leave.is_none()
+    }
+}
+
 /// SubscribeResult is the result of a subscribe call. Empty at the moment.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct SubscribeResult {}
+
+impl crate::wire::Empty for SubscribeResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// UnsubscribeRequest unsubscribes a user from a channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -819,7 +931,9 @@ pub struct UnsubscribeRequest {
     pub session: String,
     /// `label_filter` restricts the call to clients whose labels match this
     /// filter. Centrifugo PRO only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub label_filter: Option<FilterNode>,
     /// `all_users` works as SubscribeRequest.all_users. Centrifugo PRO only.
     #[serde(
@@ -887,11 +1001,37 @@ impl UnsubscribeRequest {
     }
 }
 
+impl crate::wire::Empty for UnsubscribeRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+            && crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.client)
+            && crate::wire::is_default(&self.session)
+            && crate::wire::absent(&self.label_filter)
+            && crate::wire::is_default(&self.all_users)
+    }
+}
+
+impl crate::validate::Required for UnsubscribeRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// UnsubscribeResult is the result of an unsubscribe call. Empty at the
 /// moment.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct UnsubscribeResult {}
+
+impl crate::wire::Empty for UnsubscribeResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// Disconnect describes the code and reason clients are disconnected with.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -938,6 +1078,12 @@ impl Disconnect {
     }
 }
 
+impl crate::wire::Empty for Disconnect {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.code) && crate::wire::is_default(&self.reason)
+    }
+}
+
 /// DisconnectRequest disconnects a user's connections.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -952,7 +1098,9 @@ pub struct DisconnectRequest {
     pub user: String,
     /// A custom disconnect code and reason. If not set, clients
     /// are disconnected with a force no-reconnect disconnect.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub disconnect: Option<Disconnect>,
     /// `client` limits the call to the connection with this client ID. user is
     /// still required.
@@ -979,7 +1127,9 @@ pub struct DisconnectRequest {
     pub session: String,
     /// `label_filter` restricts the call to clients whose labels match this
     /// filter. Centrifugo PRO only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub label_filter: Option<FilterNode>,
     /// `all_users` works as SubscribeRequest.all_users. Centrifugo PRO only.
     #[serde(
@@ -1055,10 +1205,34 @@ impl DisconnectRequest {
     }
 }
 
+impl crate::wire::Empty for DisconnectRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.user)
+            && crate::wire::absent(&self.disconnect)
+            && crate::wire::is_default(&self.client)
+            && self.whitelist.is_empty()
+            && crate::wire::is_default(&self.session)
+            && crate::wire::absent(&self.label_filter)
+            && crate::wire::is_default(&self.all_users)
+    }
+}
+
+impl crate::validate::Required for DisconnectRequest {
+    fn missing(&self) -> Option<String> {
+        None
+    }
+}
+
 /// DisconnectResult is the result of a disconnect call. Empty at the moment.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct DisconnectResult {}
+
+impl crate::wire::Empty for DisconnectResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// PresenceRequest returns the online presence of a channel: all clients
 /// currently subscribed to it. Presence must be enabled for the channel.
@@ -1088,6 +1262,21 @@ impl PresenceRequest {
     pub fn channel(mut self, value: impl Into<String>) -> Self {
         self.channel = value.into();
         self
+    }
+}
+
+impl crate::wire::Empty for PresenceRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+    }
+}
+
+impl crate::validate::Required for PresenceRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
     }
 }
 
@@ -1125,6 +1314,15 @@ pub struct ClientInfo {
     pub chan_info: Option<Box<RawValue>>,
 }
 
+impl crate::wire::Empty for ClientInfo {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.client)
+            && self.conn_info.is_none()
+            && self.chan_info.is_none()
+    }
+}
+
 /// PresenceResult is the result of a presence call.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -1136,6 +1334,12 @@ pub struct PresenceResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub presence: BTreeMap<String, ClientInfo>,
+}
+
+impl crate::wire::Empty for PresenceResult {
+    fn is_empty(&self) -> bool {
+        self.presence.is_empty()
+    }
 }
 
 /// PresenceStatsRequest returns short presence information of a channel: the
@@ -1170,6 +1374,21 @@ impl PresenceStatsRequest {
     }
 }
 
+impl crate::wire::Empty for PresenceStatsRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+    }
+}
+
+impl crate::validate::Required for PresenceStatsRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// PresenceStatsResult is the result of a presence stats call.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -1188,6 +1407,12 @@ pub struct PresenceStatsResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub num_users: u32,
+}
+
+impl crate::wire::Empty for PresenceStatsResult {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.num_clients) && crate::wire::is_default(&self.num_users)
+    }
 }
 
 /// StreamPosition is a position in a channel stream.
@@ -1235,6 +1460,12 @@ impl StreamPosition {
     }
 }
 
+impl crate::wire::Empty for StreamPosition {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.offset) && crate::wire::is_default(&self.epoch)
+    }
+}
+
 /// HistoryRequest returns publications from the history of a channel.
 /// History must be enabled for the channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1257,7 +1488,9 @@ pub struct HistoryRequest {
     )]
     pub limit: i32,
     /// `since` returns publications after this stream position.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub since: Option<StreamPosition>,
     /// `reverse` iterates in reverse order, from latest to earliest.
     #[serde(
@@ -1309,6 +1542,24 @@ impl HistoryRequest {
     }
 }
 
+impl crate::wire::Empty for HistoryRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+            && crate::wire::is_default(&self.limit)
+            && crate::wire::absent(&self.since)
+            && crate::wire::is_default(&self.reverse)
+    }
+}
+
+impl crate::validate::Required for HistoryRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// Publication is a publication in a channel history.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -1321,7 +1572,7 @@ pub struct Publication {
     )]
     pub data: Option<Box<RawValue>>,
     /// Information about the client that published, if any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub info: Option<ClientInfo>,
     /// The offset of the publication in the history stream.
     #[serde(
@@ -1337,6 +1588,15 @@ pub struct Publication {
         deserialize_with = "crate::wire::nullable"
     )]
     pub tags: BTreeMap<String, String>,
+}
+
+impl crate::wire::Empty for Publication {
+    fn is_empty(&self) -> bool {
+        self.data.is_none()
+            && crate::wire::absent(&self.info)
+            && crate::wire::is_default(&self.offset)
+            && self.tags.is_empty()
+    }
 }
 
 /// HistoryResult is the result of a history call.
@@ -1364,6 +1624,14 @@ pub struct HistoryResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub offset: u64,
+}
+
+impl crate::wire::Empty for HistoryResult {
+    fn is_empty(&self) -> bool {
+        self.publications.is_empty()
+            && crate::wire::is_default(&self.epoch)
+            && crate::wire::is_default(&self.offset)
+    }
 }
 
 /// HistoryRemoveRequest removes publications from the history of a channel.
@@ -1398,11 +1666,32 @@ impl HistoryRemoveRequest {
     }
 }
 
+impl crate::wire::Empty for HistoryRemoveRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+    }
+}
+
+impl crate::validate::Required for HistoryRemoveRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// HistoryRemoveResult is the result of a history remove call. Empty at the
 /// moment.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct HistoryRemoveResult {}
+
+impl crate::wire::Empty for HistoryRemoveResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// InfoRequest returns information about the running Centrifugo nodes.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1417,6 +1706,18 @@ impl InfoRequest {
     }
 }
 
+impl crate::wire::Empty for InfoRequest {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
+
+impl crate::validate::Required for InfoRequest {
+    fn missing(&self) -> Option<String> {
+        None
+    }
+}
+
 /// InfoResult is the result of an info call.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -1428,6 +1729,12 @@ pub struct InfoResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub nodes: Vec<NodeResult>,
+}
+
+impl crate::wire::Empty for InfoResult {
+    fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
 }
 
 /// RefreshRequest refreshes a user's connections, mostly useful with
@@ -1484,7 +1791,9 @@ pub struct RefreshRequest {
     pub session: String,
     /// `label_filter` restricts the call to clients whose labels match this
     /// filter. Centrifugo PRO only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub label_filter: Option<FilterNode>,
     /// `all_users` works as SubscribeRequest.all_users. Centrifugo PRO only.
     #[serde(
@@ -1568,10 +1877,35 @@ impl RefreshRequest {
     }
 }
 
+impl crate::wire::Empty for RefreshRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.client)
+            && crate::wire::is_default(&self.expired)
+            && crate::wire::is_default(&self.expire_at)
+            && self.info.is_none()
+            && crate::wire::is_default(&self.session)
+            && crate::wire::absent(&self.label_filter)
+            && crate::wire::is_default(&self.all_users)
+    }
+}
+
+impl crate::validate::Required for RefreshRequest {
+    fn missing(&self) -> Option<String> {
+        None
+    }
+}
+
 /// RefreshResult is the result of a refresh call. Empty at the moment.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct RefreshResult {}
+
+impl crate::wire::Empty for RefreshResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// NodeResult is information about a Centrifugo node.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1627,11 +1961,11 @@ pub struct NodeResult {
     )]
     pub uptime: u32,
     /// Aggregated node metrics, if available.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub metrics: Option<Metrics>,
     /// CPU and memory usage of the node process.
     /// Centrifugo PRO only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub process: Option<Process>,
     /// The number of subscriptions on the node.
     #[serde(
@@ -1640,6 +1974,21 @@ pub struct NodeResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub num_subs: u32,
+}
+
+impl crate::wire::Empty for NodeResult {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.uid)
+            && crate::wire::is_default(&self.name)
+            && crate::wire::is_default(&self.version)
+            && crate::wire::is_default(&self.num_clients)
+            && crate::wire::is_default(&self.num_users)
+            && crate::wire::is_default(&self.num_channels)
+            && crate::wire::is_default(&self.uptime)
+            && crate::wire::absent(&self.metrics)
+            && crate::wire::absent(&self.process)
+            && crate::wire::is_default(&self.num_subs)
+    }
 }
 
 /// Metrics are aggregated metrics of a node.
@@ -1662,6 +2011,12 @@ pub struct Metrics {
     pub items: BTreeMap<String, f64>,
 }
 
+impl crate::wire::Empty for Metrics {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.interval) && self.items.is_empty()
+    }
+}
+
 /// Process is resource usage of a node process. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -1680,6 +2035,12 @@ pub struct Process {
         deserialize_with = "crate::wire::nullable"
     )]
     pub rss: i64,
+}
+
+impl crate::wire::Empty for Process {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.cpu) && crate::wire::is_default(&self.rss)
+    }
 }
 
 /// ChannelsRequest returns active channels (with one or more subscribers).
@@ -1713,6 +2074,18 @@ impl ChannelsRequest {
     }
 }
 
+impl crate::wire::Empty for ChannelsRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.pattern)
+    }
+}
+
+impl crate::validate::Required for ChannelsRequest {
+    fn missing(&self) -> Option<String> {
+        None
+    }
+}
+
 /// ChannelsResult is the result of a channels call.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -1726,6 +2099,12 @@ pub struct ChannelsResult {
     pub channels: BTreeMap<String, ChannelInfo>,
 }
 
+impl crate::wire::Empty for ChannelsResult {
+    fn is_empty(&self) -> bool {
+        self.channels.is_empty()
+    }
+}
+
 /// ChannelInfo is information about an active channel.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -1737,6 +2116,12 @@ pub struct ChannelInfo {
         deserialize_with = "crate::wire::nullable"
     )]
     pub num_clients: u32,
+}
+
+impl crate::wire::Empty for ChannelInfo {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.num_clients)
+    }
 }
 
 /// ConnectionsRequest returns information about active connections, without
@@ -1761,7 +2146,9 @@ pub struct ConnectionsRequest {
     pub expression: String,
     /// `label_filter` restricts the listing to clients whose labels match this
     /// filter. Centrifugo PRO only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub label_filter: Option<FilterNode>,
 }
 
@@ -1798,6 +2185,20 @@ impl ConnectionsRequest {
     }
 }
 
+impl crate::wire::Empty for ConnectionsRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.expression)
+            && crate::wire::absent(&self.label_filter)
+    }
+}
+
+impl crate::validate::Required for ConnectionsRequest {
+    fn missing(&self) -> Option<String> {
+        None
+    }
+}
+
 /// ConnectionsResult is the result of a connections call.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1810,6 +2211,12 @@ pub struct ConnectionsResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub connections: BTreeMap<String, ConnectionInfo>,
+}
+
+impl crate::wire::Empty for ConnectionsResult {
+    fn is_empty(&self) -> bool {
+        self.connections.is_empty()
+    }
 }
 
 /// ConnectionInfo is information about a client connection.
@@ -1854,7 +2261,7 @@ pub struct ConnectionInfo {
     )]
     pub user: String,
     /// The connection state.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub state: Option<ConnectionState>,
     /// The Unix time in milliseconds when the connection
     /// was established.
@@ -1881,6 +2288,20 @@ pub struct ConnectionInfo {
     pub labels: BTreeMap<String, String>,
 }
 
+impl crate::wire::Empty for ConnectionInfo {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.app_name)
+            && crate::wire::is_default(&self.app_version)
+            && crate::wire::is_default(&self.transport)
+            && crate::wire::is_default(&self.protocol)
+            && crate::wire::is_default(&self.user)
+            && crate::wire::absent(&self.state)
+            && crate::wire::is_default(&self.connected_at_ms)
+            && crate::wire::is_default(&self.ping_pong_latency_ms)
+            && self.labels.is_empty()
+    }
+}
+
 /// ConnectionState is the state of a client connection.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1895,7 +2316,7 @@ pub struct ConnectionState {
     )]
     pub channels: BTreeMap<String, ChannelContext>,
     /// Information about the connection token.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub connection_token: Option<ConnectionTokenInfo>,
     /// `subscription_tokens` maps channel to information about the subscription
     /// token used to subscribe to it.
@@ -1917,6 +2338,15 @@ pub struct ConnectionState {
     pub meta: Option<Box<RawValue>>,
 }
 
+impl crate::wire::Empty for ConnectionState {
+    fn is_empty(&self) -> bool {
+        self.channels.is_empty()
+            && crate::wire::absent(&self.connection_token)
+            && self.subscription_tokens.is_empty()
+            && self.meta.is_none()
+    }
+}
+
 /// ChannelContext is context of a channel subscription.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1930,6 +2360,12 @@ pub struct ChannelContext {
         deserialize_with = "crate::wire::nullable"
     )]
     pub source: u32,
+}
+
+impl crate::wire::Empty for ChannelContext {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.source)
+    }
 }
 
 /// ConnectionTokenInfo is information about a connection token.
@@ -1953,6 +2389,12 @@ pub struct ConnectionTokenInfo {
     pub issued_at: i64,
 }
 
+impl crate::wire::Empty for ConnectionTokenInfo {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.uid) && crate::wire::is_default(&self.issued_at)
+    }
+}
+
 /// SubscriptionTokenInfo is information about a subscription token.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1972,6 +2414,12 @@ pub struct SubscriptionTokenInfo {
         deserialize_with = "crate::wire::nullable"
     )]
     pub issued_at: i64,
+}
+
+impl crate::wire::Empty for SubscriptionTokenInfo {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.uid) && crate::wire::is_default(&self.issued_at)
+    }
 }
 
 /// UpdateUserStatusRequest marks users as active and online now, and sets
@@ -2021,11 +2469,32 @@ impl UpdateUserStatusRequest {
     }
 }
 
+impl crate::wire::Empty for UpdateUserStatusRequest {
+    fn is_empty(&self) -> bool {
+        self.users.is_empty() && crate::wire::is_default(&self.state)
+    }
+}
+
+impl crate::validate::Required for UpdateUserStatusRequest {
+    fn missing(&self) -> Option<String> {
+        if self.users.is_empty() {
+            return Some("users".into());
+        }
+        None
+    }
+}
+
 /// UpdateUserStatusResult is the result of an update user status call. Empty
 /// at the moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct UpdateUserStatusResult {}
+
+impl crate::wire::Empty for UpdateUserStatusResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// GetUserStatusRequest returns the status of users. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2057,6 +2526,21 @@ impl GetUserStatusRequest {
     }
 }
 
+impl crate::wire::Empty for GetUserStatusRequest {
+    fn is_empty(&self) -> bool {
+        self.users.is_empty()
+    }
+}
+
+impl crate::validate::Required for GetUserStatusRequest {
+    fn missing(&self) -> Option<String> {
+        if self.users.is_empty() {
+            return Some("users".into());
+        }
+        None
+    }
+}
+
 /// GetUserStatusResult is the result of a get user status call.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2069,6 +2553,12 @@ pub struct GetUserStatusResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub statuses: Vec<UserStatus>,
+}
+
+impl crate::wire::Empty for GetUserStatusResult {
+    fn is_empty(&self) -> bool {
+        self.statuses.is_empty()
+    }
 }
 
 /// UserStatus is the status of a user. Centrifugo PRO only.
@@ -2107,6 +2597,15 @@ pub struct UserStatus {
     pub state: String,
 }
 
+impl crate::wire::Empty for UserStatus {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.active)
+            && crate::wire::is_default(&self.online)
+            && crate::wire::is_default(&self.state)
+    }
+}
+
 /// DeleteUserStatusRequest deletes the status of users. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -2137,11 +2636,32 @@ impl DeleteUserStatusRequest {
     }
 }
 
+impl crate::wire::Empty for DeleteUserStatusRequest {
+    fn is_empty(&self) -> bool {
+        self.users.is_empty()
+    }
+}
+
+impl crate::validate::Required for DeleteUserStatusRequest {
+    fn missing(&self) -> Option<String> {
+        if self.users.is_empty() {
+            return Some("users".into());
+        }
+        None
+    }
+}
+
 /// DeleteUserStatusResult is the result of a delete user status call. Empty
 /// at the moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct DeleteUserStatusResult {}
+
+impl crate::wire::Empty for DeleteUserStatusResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// BlockUserRequest blocks a user: the user is disconnected and can not
 /// connect again until unblocked or the block expires. Centrifugo PRO only.
@@ -2191,11 +2711,32 @@ impl BlockUserRequest {
     }
 }
 
+impl crate::wire::Empty for BlockUserRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.expire_at) && crate::wire::is_default(&self.user)
+    }
+}
+
+impl crate::validate::Required for BlockUserRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.user) {
+            return Some("user".into());
+        }
+        None
+    }
+}
+
 /// BlockUserResult is the result of a block user call. Empty at the moment.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct BlockUserResult {}
+
+impl crate::wire::Empty for BlockUserResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// UnblockUserRequest unblocks a user. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2225,11 +2766,32 @@ impl UnblockUserRequest {
     }
 }
 
+impl crate::wire::Empty for UnblockUserRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.user)
+    }
+}
+
+impl crate::validate::Required for UnblockUserRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.user) {
+            return Some("user".into());
+        }
+        None
+    }
+}
+
 /// UnblockUserResult is the result of an unblock user call. Empty at the
 /// moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct UnblockUserResult {}
+
+impl crate::wire::Empty for UnblockUserResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// RevokeTokenRequest revokes a token by its unique ID (jti claim of a JWT).
 /// Clients using the token are disconnected shortly, and can not connect
@@ -2279,11 +2841,32 @@ impl RevokeTokenRequest {
     }
 }
 
+impl crate::wire::Empty for RevokeTokenRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.expire_at) && crate::wire::is_default(&self.uid)
+    }
+}
+
+impl crate::validate::Required for RevokeTokenRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.uid) {
+            return Some("uid".into());
+        }
+        None
+    }
+}
+
 /// RevokeTokenResult is the result of a revoke token call. Empty at the
 /// moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct RevokeTokenResult {}
+
+impl crate::wire::Empty for RevokeTokenResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// InvalidateUserTokensRequest revokes all tokens of a user issued before a
 /// certain time (based on the iat claim of a JWT). Centrifugo PRO only.
@@ -2365,11 +2948,32 @@ impl InvalidateUserTokensRequest {
     }
 }
 
+impl crate::wire::Empty for InvalidateUserTokensRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.expire_at)
+            && crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.issued_before)
+            && crate::wire::is_default(&self.channel)
+    }
+}
+
+impl crate::validate::Required for InvalidateUserTokensRequest {
+    fn missing(&self) -> Option<String> {
+        None
+    }
+}
+
 /// InvalidateUserTokensResult is the result of an invalidate user tokens
 /// call. Empty at the moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct InvalidateUserTokensResult {}
+
+impl crate::wire::Empty for InvalidateUserTokensResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// DeviceRegisterRequest registers a device for push notifications, or
 /// updates a registered one. Centrifugo PRO only.
@@ -2543,6 +3147,35 @@ impl DeviceRegisterRequest {
     }
 }
 
+impl crate::wire::Empty for DeviceRegisterRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.id)
+            && crate::wire::is_default(&self.provider)
+            && crate::wire::is_default(&self.token)
+            && crate::wire::is_default(&self.platform)
+            && crate::wire::is_default(&self.user)
+            && self.meta.is_empty()
+            && self.topics.is_empty()
+            && crate::wire::is_default(&self.timezone)
+            && crate::wire::is_default(&self.locale)
+    }
+}
+
+impl crate::validate::Required for DeviceRegisterRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.provider) {
+            return Some("provider".into());
+        }
+        if crate::wire::is_default(&self.token) {
+            return Some("token".into());
+        }
+        if crate::wire::is_default(&self.platform) {
+            return Some("platform".into());
+        }
+        None
+    }
+}
+
 /// DeviceUpdateRequest updates registered devices, selected by ids and/or
 /// users. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2577,7 +3210,9 @@ pub struct DeviceUpdateRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub meta_update: Option<DeviceMetaUpdate>,
     /// `topics_update` updates the device topics.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub topics_update: Option<DeviceTopicsUpdate>,
     /// `timezone_update` updates the device timezone.
     ///
@@ -2658,6 +3293,32 @@ impl DeviceUpdateRequest {
     }
 }
 
+impl crate::wire::Empty for DeviceUpdateRequest {
+    fn is_empty(&self) -> bool {
+        self.ids.is_empty()
+            && self.users.is_empty()
+            && self.user_update.is_none()
+            && self.meta_update.is_none()
+            && crate::wire::absent(&self.topics_update)
+            && self.timezone_update.is_none()
+            && self.locale_update.is_none()
+    }
+}
+
+impl crate::validate::Required for DeviceUpdateRequest {
+    fn missing(&self) -> Option<String> {
+        if let Some(p) = self
+            .topics_update
+            .as_ref()
+            .filter(|v| !crate::wire::Empty::is_empty(*v))
+            .and_then(crate::validate::Required::missing)
+        {
+            return Some(format!("topics_update.{p}"));
+        }
+        None
+    }
+}
+
 /// DeviceRemoveRequest removes devices, selected by ids and/or users.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2704,6 +3365,18 @@ impl DeviceRemoveRequest {
     }
 }
 
+impl crate::wire::Empty for DeviceRemoveRequest {
+    fn is_empty(&self) -> bool {
+        self.ids.is_empty() && self.users.is_empty()
+    }
+}
+
+impl crate::validate::Required for DeviceRemoveRequest {
+    fn missing(&self) -> Option<String> {
+        None
+    }
+}
+
 /// DeviceUserUpdate sets the user of devices. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -2730,6 +3403,12 @@ impl DeviceUserUpdate {
     pub fn user(mut self, value: impl Into<String>) -> Self {
         self.user = value.into();
         self
+    }
+}
+
+impl crate::wire::Empty for DeviceUserUpdate {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.user)
     }
 }
 
@@ -2763,6 +3442,12 @@ impl DeviceTimezoneUpdate {
     }
 }
 
+impl crate::wire::Empty for DeviceTimezoneUpdate {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.timezone)
+    }
+}
+
 /// DeviceLocaleUpdate sets the locale of devices. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -2790,6 +3475,12 @@ impl DeviceLocaleUpdate {
     pub fn locale(mut self, value: impl Into<String>) -> Self {
         self.locale = value.into();
         self
+    }
+}
+
+impl crate::wire::Empty for DeviceLocaleUpdate {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.locale)
     }
 }
 
@@ -2831,6 +3522,12 @@ impl DeviceMetaUpdate {
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
         self
+    }
+}
+
+impl crate::wire::Empty for DeviceMetaUpdate {
+    fn is_empty(&self) -> bool {
+        self.meta.is_empty()
     }
 }
 
@@ -2878,6 +3575,21 @@ impl DeviceTopicsUpdate {
     pub fn topics(mut self, value: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.topics = value.into_iter().map(Into::into).collect();
         self
+    }
+}
+
+impl crate::wire::Empty for DeviceTopicsUpdate {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.op) && self.topics.is_empty()
+    }
+}
+
+impl crate::validate::Required for DeviceTopicsUpdate {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.op) {
+            return Some("op".into());
+        }
+        None
     }
 }
 
@@ -2971,13 +3683,25 @@ impl DeviceFilter {
     }
 }
 
+impl crate::wire::Empty for DeviceFilter {
+    fn is_empty(&self) -> bool {
+        self.ids.is_empty()
+            && self.users.is_empty()
+            && self.topics.is_empty()
+            && self.providers.is_empty()
+            && self.platforms.is_empty()
+    }
+}
+
 /// DeviceListRequest returns a paginated list of registered devices.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct DeviceListRequest {
     /// `filter` selects the devices to list: all of them when unset.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub filter: Option<DeviceFilter>,
     /// `include_total_count` includes the total count for the filter in the
     /// result.
@@ -3091,6 +3815,24 @@ impl DeviceListRequest {
     }
 }
 
+impl crate::wire::Empty for DeviceListRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::absent(&self.filter)
+            && crate::wire::is_default(&self.include_total_count)
+            && crate::wire::is_default(&self.include_meta)
+            && crate::wire::is_default(&self.include_topics)
+            && crate::wire::is_default(&self.include_webpush_keys)
+            && crate::wire::is_default(&self.cursor)
+            && crate::wire::is_default(&self.limit)
+    }
+}
+
+impl crate::validate::Required for DeviceListRequest {
+    fn missing(&self) -> Option<String> {
+        None
+    }
+}
+
 /// DeviceTopicFilter selects device topic subscriptions. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -3196,13 +3938,26 @@ impl DeviceTopicFilter {
     }
 }
 
+impl crate::wire::Empty for DeviceTopicFilter {
+    fn is_empty(&self) -> bool {
+        self.device_ids.is_empty()
+            && self.device_providers.is_empty()
+            && self.device_platforms.is_empty()
+            && self.device_users.is_empty()
+            && self.topics.is_empty()
+            && crate::wire::is_default(&self.topic_prefix)
+    }
+}
+
 /// DeviceTopicListRequest returns a paginated list of device topic
 /// subscriptions. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct DeviceTopicListRequest {
     /// `filter` selects the device topics to list.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub filter: Option<DeviceTopicFilter>,
     /// `include_total_count` includes the total count for the filter in the
     /// result.
@@ -3285,6 +4040,22 @@ impl DeviceTopicListRequest {
     }
 }
 
+impl crate::wire::Empty for DeviceTopicListRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::absent(&self.filter)
+            && crate::wire::is_default(&self.include_total_count)
+            && crate::wire::is_default(&self.include_device)
+            && crate::wire::is_default(&self.cursor)
+            && crate::wire::is_default(&self.limit)
+    }
+}
+
+impl crate::validate::Required for DeviceTopicListRequest {
+    fn missing(&self) -> Option<String> {
+        None
+    }
+}
+
 /// UserTopicFilter selects user topic subscriptions. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -3345,13 +4116,23 @@ impl UserTopicFilter {
     }
 }
 
+impl crate::wire::Empty for UserTopicFilter {
+    fn is_empty(&self) -> bool {
+        self.users.is_empty()
+            && self.topics.is_empty()
+            && crate::wire::is_default(&self.topic_prefix)
+    }
+}
+
 /// UserTopicListRequest returns a paginated list of user topic
 /// subscriptions. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct UserTopicListRequest {
     /// `filter` selects the user topics to list.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub filter: Option<UserTopicFilter>,
     /// `include_total_count` includes the total count for the filter in the
     /// result.
@@ -3416,6 +4197,21 @@ impl UserTopicListRequest {
     pub fn limit(mut self, value: i32) -> Self {
         self.limit = value;
         self
+    }
+}
+
+impl crate::wire::Empty for UserTopicListRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::absent(&self.filter)
+            && crate::wire::is_default(&self.include_total_count)
+            && crate::wire::is_default(&self.cursor)
+            && crate::wire::is_default(&self.limit)
+    }
+}
+
+impl crate::validate::Required for UserTopicListRequest {
+    fn missing(&self) -> Option<String> {
+        None
     }
 }
 
@@ -3500,6 +4296,27 @@ impl DeviceTopicUpdateRequest {
     }
 }
 
+impl crate::wire::Empty for DeviceTopicUpdateRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.device_id)
+            && crate::wire::is_default(&self.op)
+            && self.topics.is_empty()
+            && crate::wire::is_default(&self.user)
+    }
+}
+
+impl crate::validate::Required for DeviceTopicUpdateRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.device_id) {
+            return Some("device_id".into());
+        }
+        if crate::wire::is_default(&self.op) {
+            return Some("op".into());
+        }
+        None
+    }
+}
+
 /// UserTopicUpdateRequest changes the topics of a user. The change is also
 /// applied to the user's registered devices. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3564,6 +4381,23 @@ impl UserTopicUpdateRequest {
     }
 }
 
+impl crate::wire::Empty for UserTopicUpdateRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.op)
+            && self.topics.is_empty()
+    }
+}
+
+impl crate::validate::Required for UserTopicUpdateRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.op) {
+            return Some("op".into());
+        }
+        None
+    }
+}
+
 /// DeviceRegisterResult is the result of a device register call.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3578,17 +4412,35 @@ pub struct DeviceRegisterResult {
     pub id: String,
 }
 
+impl crate::wire::Empty for DeviceRegisterResult {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.id)
+    }
+}
+
 /// DeviceUpdateResult is the result of a device update call. Empty at the
 /// moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct DeviceUpdateResult {}
 
+impl crate::wire::Empty for DeviceUpdateResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
+
 /// DeviceRemoveResult is the result of a device remove call. Empty at the
 /// moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct DeviceRemoveResult {}
+
+impl crate::wire::Empty for DeviceRemoveResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// DeviceListResult is the result of a device list call.
 /// Centrifugo PRO only.
@@ -3618,6 +4470,14 @@ pub struct DeviceListResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub total_count: i64,
+}
+
+impl crate::wire::Empty for DeviceListResult {
+    fn is_empty(&self) -> bool {
+        self.items.is_empty()
+            && crate::wire::is_default(&self.next_cursor)
+            && crate::wire::is_default(&self.total_count)
+    }
 }
 
 /// Device is a device registered for push notifications. Centrifugo PRO only.
@@ -3715,6 +4575,23 @@ pub struct Device {
     pub webpush_keys: String,
 }
 
+impl crate::wire::Empty for Device {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.id)
+            && crate::wire::is_default(&self.platform)
+            && crate::wire::is_default(&self.provider)
+            && crate::wire::is_default(&self.token)
+            && crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.created_at)
+            && crate::wire::is_default(&self.updated_at)
+            && self.meta.is_empty()
+            && self.topics.is_empty()
+            && crate::wire::is_default(&self.timezone)
+            && crate::wire::is_default(&self.locale)
+            && crate::wire::is_default(&self.webpush_keys)
+    }
+}
+
 /// DeviceTopicListResult is the result of a device topic list call.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3745,6 +4622,14 @@ pub struct DeviceTopicListResult {
     pub total_count: i64,
 }
 
+impl crate::wire::Empty for DeviceTopicListResult {
+    fn is_empty(&self) -> bool {
+        self.items.is_empty()
+            && crate::wire::is_default(&self.next_cursor)
+            && crate::wire::is_default(&self.total_count)
+    }
+}
+
 /// DeviceTopic is a topic subscription of a device. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -3764,8 +4649,16 @@ pub struct DeviceTopic {
     )]
     pub topic: String,
     /// The device. Only set if include_device was requested.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub device: Option<Device>,
+}
+
+impl crate::wire::Empty for DeviceTopic {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.id)
+            && crate::wire::is_default(&self.topic)
+            && crate::wire::absent(&self.device)
+    }
 }
 
 /// UserTopicListResult is the result of a user topic list call.
@@ -3798,17 +4691,37 @@ pub struct UserTopicListResult {
     pub total_count: i64,
 }
 
+impl crate::wire::Empty for UserTopicListResult {
+    fn is_empty(&self) -> bool {
+        self.items.is_empty()
+            && crate::wire::is_default(&self.next_cursor)
+            && crate::wire::is_default(&self.total_count)
+    }
+}
+
 /// DeviceTopicUpdateResult is the result of a device topic update call.
 /// Empty at the moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct DeviceTopicUpdateResult {}
 
+impl crate::wire::Empty for DeviceTopicUpdateResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
+
 /// UserTopicUpdateResult is the result of a user topic update call. Empty at
 /// the moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct UserTopicUpdateResult {}
+
+impl crate::wire::Empty for UserTopicUpdateResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// UserTopic is a topic subscription of a user. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3837,6 +4750,14 @@ pub struct UserTopic {
     pub topic: String,
 }
 
+impl crate::wire::Empty for UserTopic {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.id)
+            && crate::wire::is_default(&self.user)
+            && crate::wire::is_default(&self.topic)
+    }
+}
+
 /// PushRecipient describes who receives a push notification. Set only one
 /// of its fields. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3844,7 +4765,9 @@ pub struct UserTopic {
 pub struct PushRecipient {
     /// `filter` sends to devices from Centrifugo device storage that match the
     /// filter.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub filter: Option<DeviceFilter>,
     /// `fcm_tokens` sends to a list of FCM native tokens.
     #[serde(
@@ -3986,22 +4909,44 @@ impl PushRecipient {
     }
 }
 
+impl crate::wire::Empty for PushRecipient {
+    fn is_empty(&self) -> bool {
+        crate::wire::absent(&self.filter)
+            && self.fcm_tokens.is_empty()
+            && crate::wire::is_default(&self.fcm_topic)
+            && crate::wire::is_default(&self.fcm_condition)
+            && self.hms_tokens.is_empty()
+            && crate::wire::is_default(&self.hms_topic)
+            && crate::wire::is_default(&self.hms_condition)
+            && self.apns_tokens.is_empty()
+            && self.webpush_tokens.is_empty()
+    }
+}
+
 /// PushNotification is a push notification in the format of each provider.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct PushNotification {
     /// The notification for FCM.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub fcm: Option<FcmPushNotification>,
     /// The notification for HMS.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub hms: Option<HmsPushNotification>,
     /// The notification for APNs.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub apns: Option<ApnsPushNotification>,
     /// The notification for Web Push.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub webpush: Option<WebPushPushNotification>,
     /// The Unix time in seconds when Centrifugo stops trying to
     /// send the notification. Not related to the providers' TTL fields.
@@ -4063,6 +5008,54 @@ impl PushNotification {
     }
 }
 
+impl crate::wire::Empty for PushNotification {
+    fn is_empty(&self) -> bool {
+        crate::wire::absent(&self.fcm)
+            && crate::wire::absent(&self.hms)
+            && crate::wire::absent(&self.apns)
+            && crate::wire::absent(&self.webpush)
+            && crate::wire::is_default(&self.expire_at)
+    }
+}
+
+impl crate::validate::Required for PushNotification {
+    fn missing(&self) -> Option<String> {
+        if let Some(p) = self
+            .fcm
+            .as_ref()
+            .filter(|v| !crate::wire::Empty::is_empty(*v))
+            .and_then(crate::validate::Required::missing)
+        {
+            return Some(format!("fcm.{p}"));
+        }
+        if let Some(p) = self
+            .hms
+            .as_ref()
+            .filter(|v| !crate::wire::Empty::is_empty(*v))
+            .and_then(crate::validate::Required::missing)
+        {
+            return Some(format!("hms.{p}"));
+        }
+        if let Some(p) = self
+            .apns
+            .as_ref()
+            .filter(|v| !crate::wire::Empty::is_empty(*v))
+            .and_then(crate::validate::Required::missing)
+        {
+            return Some(format!("apns.{p}"));
+        }
+        if let Some(p) = self
+            .webpush
+            .as_ref()
+            .filter(|v| !crate::wire::Empty::is_empty(*v))
+            .and_then(crate::validate::Required::missing)
+        {
+            return Some(format!("webpush.{p}"));
+        }
+        None
+    }
+}
+
 /// FcmPushNotification is a notification for FCM. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -4093,6 +5086,21 @@ impl FcmPushNotification {
     }
 }
 
+impl crate::wire::Empty for FcmPushNotification {
+    fn is_empty(&self) -> bool {
+        self.message.is_none()
+    }
+}
+
+impl crate::validate::Required for FcmPushNotification {
+    fn missing(&self) -> Option<String> {
+        if self.message.is_none() {
+            return Some("message".into());
+        }
+        None
+    }
+}
+
 /// HmsPushNotification is a notification for HMS. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -4120,6 +5128,21 @@ impl HmsPushNotification {
     pub fn message(mut self, value: Box<RawValue>) -> Self {
         self.message = Some(value);
         self
+    }
+}
+
+impl crate::wire::Empty for HmsPushNotification {
+    fn is_empty(&self) -> bool {
+        self.message.is_none()
+    }
+}
+
+impl crate::validate::Required for HmsPushNotification {
+    fn missing(&self) -> Option<String> {
+        if self.message.is_none() {
+            return Some("message".into());
+        }
+        None
     }
 }
 
@@ -4171,6 +5194,21 @@ impl ApnsPushNotification {
     pub fn payload(mut self, value: Box<RawValue>) -> Self {
         self.payload = Some(value);
         self
+    }
+}
+
+impl crate::wire::Empty for ApnsPushNotification {
+    fn is_empty(&self) -> bool {
+        self.headers.is_empty() && self.payload.is_none()
+    }
+}
+
+impl crate::validate::Required for ApnsPushNotification {
+    fn missing(&self) -> Option<String> {
+        if self.payload.is_none() {
+            return Some("payload".into());
+        }
+        None
     }
 }
 
@@ -4228,6 +5266,21 @@ impl WebPushPushNotification {
     }
 }
 
+impl crate::wire::Empty for WebPushPushNotification {
+    fn is_empty(&self) -> bool {
+        self.headers.is_empty() && self.payload.is_none()
+    }
+}
+
+impl crate::validate::Required for WebPushPushNotification {
+    fn missing(&self) -> Option<String> {
+        if self.payload.is_none() {
+            return Some("payload".into());
+        }
+        None
+    }
+}
+
 /// SendPushNotificationRequest sends a push notification. The request is
 /// queued and sent to the provider by Centrifugo workers.
 /// Centrifugo PRO only.
@@ -4235,10 +5288,14 @@ impl WebPushPushNotification {
 #[non_exhaustive]
 pub struct SendPushNotificationRequest {
     /// Who receives the notification. Required.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub recipient: Option<PushRecipient>,
     /// The notification to send. Required.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub notification: Option<PushNotification>,
     /// A unique identifier of the request, can be used to cancel the
     /// push. UUID v4 is recommended; different requests must use different
@@ -4270,7 +5327,9 @@ pub struct SendPushNotificationRequest {
     /// with a filter recipient; devices are then processed one by one
     /// instead of in batches. Needs notification.expire_at: a push the limits
     /// hold back is not tried forever.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub limit_strategy: Option<PushLimitStrategy>,
     /// The identifier for push notification analytics. If
     /// not set, uid is used.
@@ -4398,6 +5457,49 @@ impl SendPushNotificationRequest {
     }
 }
 
+impl crate::wire::Empty for SendPushNotificationRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::absent(&self.recipient)
+            && crate::wire::absent(&self.notification)
+            && crate::wire::is_default(&self.uid)
+            && crate::wire::is_default(&self.send_at)
+            && crate::wire::is_default(&self.optimize_for_reliability)
+            && crate::wire::absent(&self.limit_strategy)
+            && crate::wire::is_default(&self.analytics_uid)
+            && self.localizations.is_empty()
+            && crate::wire::is_default(&self.use_templating)
+            && crate::wire::is_default(&self.use_meta)
+    }
+}
+
+impl crate::validate::Required for SendPushNotificationRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::absent(&self.recipient) {
+            return Some("recipient".into());
+        }
+        if crate::wire::absent(&self.notification) {
+            return Some("notification".into());
+        }
+        if let Some(p) = self
+            .notification
+            .as_ref()
+            .filter(|v| !crate::wire::Empty::is_empty(*v))
+            .and_then(crate::validate::Required::missing)
+        {
+            return Some(format!("notification.{p}"));
+        }
+        if let Some(p) = self
+            .limit_strategy
+            .as_ref()
+            .filter(|v| !crate::wire::Empty::is_empty(*v))
+            .and_then(crate::validate::Required::missing)
+        {
+            return Some(format!("limit_strategy.{p}"));
+        }
+        None
+    }
+}
+
 /// PushLocalization holds translations for one language/locale.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -4435,16 +5537,26 @@ impl PushLocalization {
     }
 }
 
+impl crate::wire::Empty for PushLocalization {
+    fn is_empty(&self) -> bool {
+        self.translations.is_empty()
+    }
+}
+
 /// PushLimitStrategy limits when and how often pushes are sent.
 /// Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct PushLimitStrategy {
     /// `rate_limit` sets rate limit policies.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub rate_limit: Option<PushRateLimitStrategy>,
     /// `time_limit` sets a time limit policy based on the device timezone.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// Not sent when it is empty, as when it is `None`.
+    #[serde(default, skip_serializing_if = "crate::wire::absent")]
     pub time_limit: Option<PushTimeLimitStrategy>,
 }
 
@@ -4470,6 +5582,34 @@ impl PushLimitStrategy {
     pub fn time_limit(mut self, value: PushTimeLimitStrategy) -> Self {
         self.time_limit = Some(value);
         self
+    }
+}
+
+impl crate::wire::Empty for PushLimitStrategy {
+    fn is_empty(&self) -> bool {
+        crate::wire::absent(&self.rate_limit) && crate::wire::absent(&self.time_limit)
+    }
+}
+
+impl crate::validate::Required for PushLimitStrategy {
+    fn missing(&self) -> Option<String> {
+        if let Some(p) = self
+            .rate_limit
+            .as_ref()
+            .filter(|v| !crate::wire::Empty::is_empty(*v))
+            .and_then(crate::validate::Required::missing)
+        {
+            return Some(format!("rate_limit.{p}"));
+        }
+        if let Some(p) = self
+            .time_limit
+            .as_ref()
+            .filter(|v| !crate::wire::Empty::is_empty(*v))
+            .and_then(crate::validate::Required::missing)
+        {
+            return Some(format!("time_limit.{p}"));
+        }
+        None
     }
 }
 
@@ -4537,6 +5677,26 @@ impl PushTimeLimitStrategy {
     }
 }
 
+impl crate::wire::Empty for PushTimeLimitStrategy {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.send_after_time)
+            && crate::wire::is_default(&self.send_before_time)
+            && crate::wire::is_default(&self.no_tz_send_now)
+    }
+}
+
+impl crate::validate::Required for PushTimeLimitStrategy {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.send_after_time) {
+            return Some("send_after_time".into());
+        }
+        if crate::wire::is_default(&self.send_before_time) {
+            return Some("send_before_time".into());
+        }
+        None
+    }
+}
+
 /// PushRateLimitStrategy rate limits pushes per device. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -4599,6 +5759,25 @@ impl PushRateLimitStrategy {
     }
 }
 
+impl crate::wire::Empty for PushRateLimitStrategy {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.key)
+            && self.policies.is_empty()
+            && crate::wire::is_default(&self.drop_if_rate_limited)
+    }
+}
+
+impl crate::validate::Required for PushRateLimitStrategy {
+    fn missing(&self) -> Option<String> {
+        for (i, v) in self.policies.iter().enumerate() {
+            if let Some(p) = crate::validate::Required::missing(v) {
+                return Some(format!("policies[{i}].{p}"));
+            }
+        }
+        None
+    }
+}
+
 /// RateLimitPolicy allows rate pushes per interval_ms. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -4641,6 +5820,24 @@ impl RateLimitPolicy {
     }
 }
 
+impl crate::wire::Empty for RateLimitPolicy {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.rate) && crate::wire::is_default(&self.interval_ms)
+    }
+}
+
+impl crate::validate::Required for RateLimitPolicy {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.rate) {
+            return Some("rate".into());
+        }
+        if crate::wire::is_default(&self.interval_ms) {
+            return Some("interval_ms".into());
+        }
+        None
+    }
+}
+
 /// SendPushNotificationResult is the result of a send push notification
 /// call. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -4654,6 +5851,12 @@ pub struct SendPushNotificationResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub uid: String,
+}
+
+impl crate::wire::Empty for SendPushNotificationResult {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.uid)
+    }
 }
 
 /// UpdatePushStatusRequest saves the delivery or interaction status of a
@@ -4740,11 +5943,41 @@ impl UpdatePushStatusRequest {
     }
 }
 
+impl crate::wire::Empty for UpdatePushStatusRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.analytics_uid)
+            && crate::wire::is_default(&self.status)
+            && crate::wire::is_default(&self.device_id)
+            && crate::wire::is_default(&self.msg_id)
+    }
+}
+
+impl crate::validate::Required for UpdatePushStatusRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.analytics_uid) {
+            return Some("analytics_uid".into());
+        }
+        if crate::wire::is_default(&self.status) {
+            return Some("status".into());
+        }
+        if crate::wire::is_default(&self.device_id) {
+            return Some("device_id".into());
+        }
+        None
+    }
+}
+
 /// UpdatePushStatusResult is the result of an update push status call.
 /// Empty at the moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct UpdatePushStatusResult {}
+
+impl crate::wire::Empty for UpdatePushStatusResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// CancelPushRequest cancels a delayed push notification (sent with
 /// send_at). Centrifugo PRO only.
@@ -4775,11 +6008,32 @@ impl CancelPushRequest {
     }
 }
 
+impl crate::wire::Empty for CancelPushRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.uid)
+    }
+}
+
+impl crate::validate::Required for CancelPushRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.uid) {
+            return Some("uid".into());
+        }
+        None
+    }
+}
+
 /// CancelPushResult is the result of a cancel push call. Empty at the
 /// moment. Centrifugo PRO only.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct CancelPushResult {}
+
+impl crate::wire::Empty for CancelPushResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// MapPublishRequest publishes or updates a key in a map channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5010,6 +6264,36 @@ impl MapPublishRequest {
     }
 }
 
+impl crate::wire::Empty for MapPublishRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+            && crate::wire::is_default(&self.key)
+            && self.data.is_none()
+            && crate::wire::is_default(&self.b64data)
+            && self.stream_data.is_none()
+            && crate::wire::is_default(&self.b64stream_data)
+            && self.tags.is_empty()
+            && crate::wire::is_default(&self.idempotency_key)
+            && crate::wire::is_default(&self.delta)
+            && crate::wire::is_default(&self.version)
+            && crate::wire::is_default(&self.version_epoch)
+            && crate::wire::is_default(&self.score)
+            && crate::wire::is_default(&self.key_mode)
+    }
+}
+
+impl crate::validate::Required for MapPublishRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        if crate::wire::is_default(&self.key) {
+            return Some("key".into());
+        }
+        None
+    }
+}
+
 /// MapPublishResult is the result of a map publish call.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -5044,6 +6328,15 @@ pub struct MapPublishResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub suppress_reason: String,
+}
+
+impl crate::wire::Empty for MapPublishResult {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.offset)
+            && crate::wire::is_default(&self.epoch)
+            && crate::wire::is_default(&self.suppressed)
+            && crate::wire::is_default(&self.suppress_reason)
+    }
 }
 
 /// MapRemoveRequest removes a key from a map channel.
@@ -5109,6 +6402,26 @@ impl MapRemoveRequest {
     }
 }
 
+impl crate::wire::Empty for MapRemoveRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+            && crate::wire::is_default(&self.key)
+            && crate::wire::is_default(&self.idempotency_key)
+    }
+}
+
+impl crate::validate::Required for MapRemoveRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        if crate::wire::is_default(&self.key) {
+            return Some("key".into());
+        }
+        None
+    }
+}
+
 /// MapRemoveResult is the result of a map remove call.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -5143,6 +6456,15 @@ pub struct MapRemoveResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub suppress_reason: String,
+}
+
+impl crate::wire::Empty for MapRemoveResult {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.offset)
+            && crate::wire::is_default(&self.epoch)
+            && crate::wire::is_default(&self.suppressed)
+            && crate::wire::is_default(&self.suppress_reason)
+    }
 }
 
 /// MapReadStateRequest reads the current state of a map channel, with
@@ -5274,6 +6596,27 @@ impl MapReadStateRequest {
     }
 }
 
+impl crate::wire::Empty for MapReadStateRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+            && crate::wire::is_default(&self.cursor)
+            && crate::wire::is_default(&self.limit)
+            && crate::wire::is_default(&self.key)
+            && crate::wire::is_default(&self.asc)
+            && crate::wire::is_default(&self.revision_offset)
+            && crate::wire::is_default(&self.revision_epoch)
+    }
+}
+
+impl crate::validate::Required for MapReadStateRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// MapReadStateResult is the result of a map read state call.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -5307,6 +6650,15 @@ pub struct MapReadStateResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub cursor: String,
+}
+
+impl crate::wire::Empty for MapReadStateResult {
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+            && crate::wire::is_default(&self.offset)
+            && crate::wire::is_default(&self.epoch)
+            && crate::wire::is_default(&self.cursor)
+    }
 }
 
 /// MapEntry is an entry of a map channel state or stream.
@@ -5362,6 +6714,18 @@ pub struct MapEntry {
         deserialize_with = "crate::wire::nullable"
     )]
     pub time: i64,
+}
+
+impl crate::wire::Empty for MapEntry {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.key)
+            && self.data.is_none()
+            && self.tags.is_empty()
+            && crate::wire::is_default(&self.offset)
+            && crate::wire::is_default(&self.score)
+            && crate::wire::is_default(&self.removed)
+            && crate::wire::is_default(&self.time)
+    }
 }
 
 /// MapReadStreamRequest reads the change stream of a map channel.
@@ -5457,6 +6821,25 @@ impl MapReadStreamRequest {
     }
 }
 
+impl crate::wire::Empty for MapReadStreamRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+            && crate::wire::is_default(&self.since_offset)
+            && crate::wire::is_default(&self.since_epoch)
+            && crate::wire::is_default(&self.limit)
+            && crate::wire::is_default(&self.reverse)
+    }
+}
+
+impl crate::validate::Required for MapReadStreamRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// MapReadStreamResult is the result of a map read stream call.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -5482,6 +6865,14 @@ pub struct MapReadStreamResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub epoch: String,
+}
+
+impl crate::wire::Empty for MapReadStreamResult {
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+            && crate::wire::is_default(&self.offset)
+            && crate::wire::is_default(&self.epoch)
+    }
 }
 
 /// MapStatsRequest returns statistics about a map channel.
@@ -5514,6 +6905,21 @@ impl MapStatsRequest {
     }
 }
 
+impl crate::wire::Empty for MapStatsRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+    }
+}
+
+impl crate::validate::Required for MapStatsRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// MapStatsResult is the result of a map stats call.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
@@ -5525,6 +6931,12 @@ pub struct MapStatsResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub num_keys: i32,
+}
+
+impl crate::wire::Empty for MapStatsResult {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.num_keys)
+    }
 }
 
 /// MapClearRequest removes all state and stream data of a map channel.
@@ -5557,10 +6969,31 @@ impl MapClearRequest {
     }
 }
 
+impl crate::wire::Empty for MapClearRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+    }
+}
+
+impl crate::validate::Required for MapClearRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        None
+    }
+}
+
 /// MapClearResult is the result of a map clear call. Empty at the moment.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct MapClearResult {}
+
+impl crate::wire::Empty for MapClearResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// SharedPollPublishRequest pushes data for a key directly to clients of a
 /// shared poll channel, without waiting for the next poll cycle. Requires
@@ -5671,11 +7104,43 @@ impl SharedPollPublishRequest {
     }
 }
 
+impl crate::wire::Empty for SharedPollPublishRequest {
+    fn is_empty(&self) -> bool {
+        crate::wire::is_default(&self.channel)
+            && crate::wire::is_default(&self.key)
+            && self.data.is_none()
+            && crate::wire::is_default(&self.b64data)
+            && crate::wire::is_default(&self.version)
+            && crate::wire::is_default(&self.epoch)
+    }
+}
+
+impl crate::validate::Required for SharedPollPublishRequest {
+    fn missing(&self) -> Option<String> {
+        if crate::wire::is_default(&self.channel) {
+            return Some("channel".into());
+        }
+        if crate::wire::is_default(&self.key) {
+            return Some("key".into());
+        }
+        if crate::wire::is_default(&self.version) {
+            return Some("version".into());
+        }
+        None
+    }
+}
+
 /// SharedPollPublishResult is the result of a shared poll publish call.
 /// Empty at the moment.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct SharedPollPublishResult {}
+
+impl crate::wire::Empty for SharedPollPublishResult {
+    fn is_empty(&self) -> bool {
+        true
+    }
+}
 
 /// `"and"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
 /// Centrifugo accepts which no constant names can still be sent.
@@ -5804,6 +7269,7 @@ impl crate::Request for PublishRequest {
     const PRO_ONLY: bool = false;
 
     fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)?;
         crate::validate::publish(self)
     }
 }
@@ -5815,6 +7281,7 @@ impl crate::Request for BroadcastRequest {
     const PRO_ONLY: bool = false;
 
     fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)?;
         crate::validate::broadcast(self)
     }
 }
@@ -5824,6 +7291,10 @@ impl crate::request::Sealed for SubscribeRequest {}
 impl crate::Request for SubscribeRequest {
     const METHOD: &'static str = "subscribe";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for UnsubscribeRequest {}
@@ -5831,6 +7302,10 @@ impl crate::request::Sealed for UnsubscribeRequest {}
 impl crate::Request for UnsubscribeRequest {
     const METHOD: &'static str = "unsubscribe";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for DisconnectRequest {}
@@ -5838,6 +7313,10 @@ impl crate::request::Sealed for DisconnectRequest {}
 impl crate::Request for DisconnectRequest {
     const METHOD: &'static str = "disconnect";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for PresenceRequest {}
@@ -5845,6 +7324,10 @@ impl crate::request::Sealed for PresenceRequest {}
 impl crate::Request for PresenceRequest {
     const METHOD: &'static str = "presence";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for PresenceStatsRequest {}
@@ -5852,6 +7335,10 @@ impl crate::request::Sealed for PresenceStatsRequest {}
 impl crate::Request for PresenceStatsRequest {
     const METHOD: &'static str = "presence_stats";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for HistoryRequest {}
@@ -5859,6 +7346,10 @@ impl crate::request::Sealed for HistoryRequest {}
 impl crate::Request for HistoryRequest {
     const METHOD: &'static str = "history";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for HistoryRemoveRequest {}
@@ -5866,6 +7357,10 @@ impl crate::request::Sealed for HistoryRemoveRequest {}
 impl crate::Request for HistoryRemoveRequest {
     const METHOD: &'static str = "history_remove";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for InfoRequest {}
@@ -5873,6 +7368,10 @@ impl crate::request::Sealed for InfoRequest {}
 impl crate::Request for InfoRequest {
     const METHOD: &'static str = "info";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for RefreshRequest {}
@@ -5880,6 +7379,10 @@ impl crate::request::Sealed for RefreshRequest {}
 impl crate::Request for RefreshRequest {
     const METHOD: &'static str = "refresh";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for ChannelsRequest {}
@@ -5887,6 +7390,10 @@ impl crate::request::Sealed for ChannelsRequest {}
 impl crate::Request for ChannelsRequest {
     const METHOD: &'static str = "channels";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for ConnectionsRequest {}
@@ -5894,6 +7401,10 @@ impl crate::request::Sealed for ConnectionsRequest {}
 impl crate::Request for ConnectionsRequest {
     const METHOD: &'static str = "connections";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for UpdateUserStatusRequest {}
@@ -5901,6 +7412,10 @@ impl crate::request::Sealed for UpdateUserStatusRequest {}
 impl crate::Request for UpdateUserStatusRequest {
     const METHOD: &'static str = "update_user_status";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for GetUserStatusRequest {}
@@ -5908,6 +7423,10 @@ impl crate::request::Sealed for GetUserStatusRequest {}
 impl crate::Request for GetUserStatusRequest {
     const METHOD: &'static str = "get_user_status";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for DeleteUserStatusRequest {}
@@ -5915,6 +7434,10 @@ impl crate::request::Sealed for DeleteUserStatusRequest {}
 impl crate::Request for DeleteUserStatusRequest {
     const METHOD: &'static str = "delete_user_status";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for BlockUserRequest {}
@@ -5922,6 +7445,10 @@ impl crate::request::Sealed for BlockUserRequest {}
 impl crate::Request for BlockUserRequest {
     const METHOD: &'static str = "block_user";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for UnblockUserRequest {}
@@ -5929,6 +7456,10 @@ impl crate::request::Sealed for UnblockUserRequest {}
 impl crate::Request for UnblockUserRequest {
     const METHOD: &'static str = "unblock_user";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for RevokeTokenRequest {}
@@ -5936,6 +7467,10 @@ impl crate::request::Sealed for RevokeTokenRequest {}
 impl crate::Request for RevokeTokenRequest {
     const METHOD: &'static str = "revoke_token";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for InvalidateUserTokensRequest {}
@@ -5943,6 +7478,10 @@ impl crate::request::Sealed for InvalidateUserTokensRequest {}
 impl crate::Request for InvalidateUserTokensRequest {
     const METHOD: &'static str = "invalidate_user_tokens";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for DeviceRegisterRequest {}
@@ -5950,6 +7489,10 @@ impl crate::request::Sealed for DeviceRegisterRequest {}
 impl crate::Request for DeviceRegisterRequest {
     const METHOD: &'static str = "device_register";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for DeviceUpdateRequest {}
@@ -5957,6 +7500,10 @@ impl crate::request::Sealed for DeviceUpdateRequest {}
 impl crate::Request for DeviceUpdateRequest {
     const METHOD: &'static str = "device_update";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for DeviceRemoveRequest {}
@@ -5964,6 +7511,10 @@ impl crate::request::Sealed for DeviceRemoveRequest {}
 impl crate::Request for DeviceRemoveRequest {
     const METHOD: &'static str = "device_remove";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for DeviceListRequest {}
@@ -5971,6 +7522,10 @@ impl crate::request::Sealed for DeviceListRequest {}
 impl crate::Request for DeviceListRequest {
     const METHOD: &'static str = "device_list";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for DeviceTopicListRequest {}
@@ -5978,6 +7533,10 @@ impl crate::request::Sealed for DeviceTopicListRequest {}
 impl crate::Request for DeviceTopicListRequest {
     const METHOD: &'static str = "device_topic_list";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for DeviceTopicUpdateRequest {}
@@ -5985,6 +7544,10 @@ impl crate::request::Sealed for DeviceTopicUpdateRequest {}
 impl crate::Request for DeviceTopicUpdateRequest {
     const METHOD: &'static str = "device_topic_update";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for UserTopicListRequest {}
@@ -5992,6 +7555,10 @@ impl crate::request::Sealed for UserTopicListRequest {}
 impl crate::Request for UserTopicListRequest {
     const METHOD: &'static str = "user_topic_list";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for UserTopicUpdateRequest {}
@@ -5999,6 +7566,10 @@ impl crate::request::Sealed for UserTopicUpdateRequest {}
 impl crate::Request for UserTopicUpdateRequest {
     const METHOD: &'static str = "user_topic_update";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for SendPushNotificationRequest {}
@@ -6006,6 +7577,10 @@ impl crate::request::Sealed for SendPushNotificationRequest {}
 impl crate::Request for SendPushNotificationRequest {
     const METHOD: &'static str = "send_push_notification";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for UpdatePushStatusRequest {}
@@ -6013,6 +7588,10 @@ impl crate::request::Sealed for UpdatePushStatusRequest {}
 impl crate::Request for UpdatePushStatusRequest {
     const METHOD: &'static str = "update_push_status";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for CancelPushRequest {}
@@ -6020,6 +7599,10 @@ impl crate::request::Sealed for CancelPushRequest {}
 impl crate::Request for CancelPushRequest {
     const METHOD: &'static str = "cancel_push";
     const PRO_ONLY: bool = true;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for MapPublishRequest {}
@@ -6027,6 +7610,10 @@ impl crate::request::Sealed for MapPublishRequest {}
 impl crate::Request for MapPublishRequest {
     const METHOD: &'static str = "map_publish";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for MapRemoveRequest {}
@@ -6034,6 +7621,10 @@ impl crate::request::Sealed for MapRemoveRequest {}
 impl crate::Request for MapRemoveRequest {
     const METHOD: &'static str = "map_remove";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for MapReadStateRequest {}
@@ -6041,6 +7632,10 @@ impl crate::request::Sealed for MapReadStateRequest {}
 impl crate::Request for MapReadStateRequest {
     const METHOD: &'static str = "map_read_state";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for MapReadStreamRequest {}
@@ -6048,6 +7643,10 @@ impl crate::request::Sealed for MapReadStreamRequest {}
 impl crate::Request for MapReadStreamRequest {
     const METHOD: &'static str = "map_read_stream";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for MapStatsRequest {}
@@ -6055,6 +7654,10 @@ impl crate::request::Sealed for MapStatsRequest {}
 impl crate::Request for MapStatsRequest {
     const METHOD: &'static str = "map_stats";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for MapClearRequest {}
@@ -6062,6 +7665,10 @@ impl crate::request::Sealed for MapClearRequest {}
 impl crate::Request for MapClearRequest {
     const METHOD: &'static str = "map_clear";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 impl crate::request::Sealed for SharedPollPublishRequest {}
@@ -6069,6 +7676,10 @@ impl crate::request::Sealed for SharedPollPublishRequest {}
 impl crate::Request for SharedPollPublishRequest {
     const METHOD: &'static str = "shared_poll_publish";
     const PRO_ONLY: bool = false;
+
+    fn validate(&self) -> Result<(), crate::Error> {
+        crate::validate::required(self)
+    }
 }
 
 /// Every API method, `batch` included, and whether only Centrifugo PRO has it:

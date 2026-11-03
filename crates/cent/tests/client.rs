@@ -332,6 +332,101 @@ async fn invalid_requests_are_not_sent() {
     assert_eq!(fake.requests().len(), 1);
 }
 
+/// A field marked "Required." is checked for a value before sending (spec
+/// 3.3, 3.5): `new("")` passes it empty, and an empty one is a missing one on
+/// the wire. The error names its path, nested messages and list elements
+/// included, and nothing is sent - from a call, a batch or a command. A
+/// field whose empty value has a meaning, and a nested message set but empty
+/// (which is not sent), are not checked.
+#[tokio::test]
+async fn required_fields_are_checked_for_a_value() {
+    use cent::{
+        FcmPushNotification, PushLimitStrategy, PushNotification, PushRateLimitStrategy,
+        PushRecipient, RateLimitPolicy, SendPushNotificationRequest,
+    };
+    let fake = Fake::centrifugo();
+    let client = Client::new(fake.config()).unwrap();
+    let recipient = || PushRecipient::new().fcm_tokens(["d"]);
+    let notification = || PushNotification::new().fcm(FcmPushNotification::new(raw("{}")));
+    let invalid = |e: &Error, method: &str, path: &str| {
+        assert!(
+            matches!(e, Error::InvalidRequest(i) if i.method() == method),
+            "{e:?}"
+        );
+        assert!(
+            e.to_string().contains(&format!("{path} is required")),
+            "{e}"
+        );
+    };
+
+    let e = client.presence(PresenceRequest::new("")).await.unwrap_err();
+    invalid(&e, "presence", "channel");
+    for (req, path) in [
+        (
+            SendPushNotificationRequest::new(PushRecipient::new(), notification()),
+            "recipient",
+        ),
+        (
+            SendPushNotificationRequest::new(recipient(), PushNotification::new()),
+            "notification",
+        ),
+        (
+            SendPushNotificationRequest::new(
+                recipient(),
+                PushNotification::new().fcm(FcmPushNotification::new(raw("null"))),
+            )
+            .limit_strategy(
+                PushLimitStrategy::new().rate_limit(
+                    PushRateLimitStrategy::new()
+                        .policies([RateLimitPolicy::new(5, 1000), RateLimitPolicy::new(0, 1000)]),
+                ),
+            ),
+            "limit_strategy.rate_limit.policies[1].rate",
+        ),
+    ] {
+        let e = client.send_push_notification(req).await.unwrap_err();
+        invalid(&e, "send_push_notification", path);
+    }
+    let e = cent::Command::presence(PresenceRequest::new("")).unwrap_err();
+    invalid(&e, "presence", "channel");
+    assert_eq!(fake.requests().len(), 0);
+
+    // A batch holding one fails before sending, naming the command.
+    let mut b = client.new_batch(cent::BatchOptions::default());
+    let _good = b.presence(PresenceRequest::new("c"));
+    let bad = b.presence(PresenceRequest::new(""));
+    let e = b.send().await.unwrap_err();
+    invalid(&e, "presence", "channel");
+    invalid(&bad.result().unwrap_err(), "presence", "channel");
+    assert_eq!(fake.requests().len(), 0);
+
+    // Empty has a meaning: "" detaches the devices from their user. A
+    // limit strategy set but empty is not sent, so not checked.
+    client
+        .device_update(
+            cent::DeviceUpdateRequest::new()
+                .users(["42"])
+                .user_update(cent::DeviceUserUpdate::new("")),
+        )
+        .await
+        .unwrap();
+    client
+        .send_push_notification(
+            SendPushNotificationRequest::new(recipient(), notification())
+                .limit_strategy(PushLimitStrategy::new()),
+        )
+        .await
+        .unwrap();
+    let sent = fake.requests();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[0].body["user_update"], serde_json::json!({}));
+    assert!(
+        sent[1].body.get("limit_strategy").is_none(),
+        "{}",
+        sent[1].body
+    );
+}
+
 // Spec 3.4: a payload is carried exactly, in and out.
 #[tokio::test]
 async fn payloads_round_trip_exactly() {

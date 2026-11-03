@@ -209,6 +209,10 @@ struct Usage<'a> {
     input: bool,
     /// The constants of the fields listing their values.
     groups: &'a [ConstGroup],
+    /// In the API, the messages generated: a field holding one which is not
+    /// a presence wrapper is not sent when empty (spec 2). The proxy's
+    /// results keep an empty message, which answers Centrifugo.
+    api: Option<&'a HashSet<String>>,
 }
 
 /// A message holding a single `value` field, like `BoolValue`: tri-state,
@@ -413,6 +417,139 @@ pub(crate) fn is_presence_wrapper(m: &Message) -> bool {
             || (is_required(&m.fields[0]) && empty_has_meaning(&m.fields[0])))
 }
 
+/// A field holding a generated message which is not a presence wrapper: not
+/// sent when it is `None`, nor when it is empty - Centrifugo reads some
+/// messages by whether they are there, and refuses `"limit_strategy": {}`
+/// (spec 2).
+fn drops_when_empty(s: &Schema, f: &Field, emitted: &HashSet<String>) -> bool {
+    f.map_key.is_none()
+        && !f.repeated
+        && emitted.contains(&f.typ)
+        && s.message(&f.typ).is_some_and(|m| !is_presence_wrapper(m))
+}
+
+/// The condition, on `self.<field>`, that a field holds its zero value: what
+/// is not sent (spec 2).
+fn empty_cond(s: &Schema, f: &Field, emitted: &HashSet<String>) -> String {
+    let x = format!("self.{}", ident(&f.name));
+    if f.map_key.is_some() || f.repeated {
+        format!("{x}.is_empty()")
+    } else if drops_when_empty(s, f, emitted) {
+        format!("crate::wire::absent(&{x})")
+    } else if f.typ == "bytes" || s.message(&f.typ).is_some() {
+        format!("{x}.is_none()")
+    } else {
+        format!("crate::wire::is_default(&{x})")
+    }
+}
+
+/// Writes `crate::wire::Empty` for a message: whether every field is its
+/// zero value, so that it is sent as `{}` - which, but for a presence
+/// wrapper, is not sent at all.
+fn emit_empty(w: &mut Writer, s: &Schema, m: &Message, emitted: &HashSet<String>) {
+    let conds: Vec<String> = m.fields.iter().map(|f| empty_cond(s, f, emitted)).collect();
+    w.line("");
+    w.line(&format!("impl crate::wire::Empty for {} {{", m.name));
+    w.line("fn is_empty(&self) -> bool {");
+    if conds.is_empty() {
+        w.line("true");
+    } else {
+        w.line(&conds.join(" && "));
+    }
+    w.line("}");
+    w.line("}");
+}
+
+/// The input messages with something to check before sending: a required
+/// field whose empty value has no meaning, or a nested message with one.
+fn checked_messages(
+    s: &Schema,
+    inputs: &HashSet<String>,
+    emitted: &HashSet<String>,
+) -> HashSet<String> {
+    let mut needs: HashSet<String> = HashSet::new();
+    loop {
+        let before = needs.len();
+        for m in &s.messages {
+            if !inputs.contains(&m.name) || !emitted.contains(&m.name) || needs.contains(&m.name) {
+                continue;
+            }
+            if m.fields
+                .iter()
+                .any(|f| (is_required(f) && !empty_has_meaning(f)) || needs.contains(&f.typ))
+            {
+                needs.insert(m.name.clone());
+            }
+        }
+        if needs.len() == before {
+            return needs;
+        }
+    }
+}
+
+/// Writes `crate::validate::Required` for an input message: the path of the
+/// first field marked "Required." left without a value - unset, or given
+/// empty, which on the wire is the same - and of those of the messages it
+/// holds: a nested one when it is sent, each element of a list (spec 3.3,
+/// 3.5). The fields whose empty value has a meaning are not checked.
+fn emit_required(
+    w: &mut Writer,
+    s: &Schema,
+    m: &Message,
+    emitted: &HashSet<String>,
+    checked: &HashSet<String>,
+) -> Result<(), String> {
+    w.line("");
+    w.line(&format!("impl crate::validate::Required for {} {{", m.name));
+    w.line("fn missing(&self) -> Option<String> {");
+    for f in &m.fields {
+        let x = format!("self.{}", ident(&f.name));
+        if is_required(f) && !empty_has_meaning(f) {
+            w.line(&format!("if {} {{", empty_cond(s, f, emitted)));
+            w.line(&format!("return Some({:?}.into());", f.name));
+            w.line("}");
+        }
+        if !checked.contains(&f.typ) {
+            continue;
+        }
+        if f.map_key.is_some() {
+            w.line(&format!("for (k, v) in &{x} {{"));
+            w.line("if let Some(p) = crate::validate::Required::missing(v) {");
+            w.line(&format!(
+                "return Some(format!(\"{}[{{k:?}}].{{p}}\"));",
+                f.name
+            ));
+            w.line("}");
+            w.line("}");
+        } else if f.repeated {
+            w.line(&format!("for (i, v) in {x}.iter().enumerate() {{"));
+            w.line("if let Some(p) = crate::validate::Required::missing(v) {");
+            w.line(&format!(
+                "return Some(format!(\"{}[{{i}}].{{p}}\"));",
+                f.name
+            ));
+            w.line("}");
+            w.line("}");
+        } else if drops_when_empty(s, f, emitted) {
+            // Checked when sent: set and not empty.
+            w.line(&format!(
+                "if let Some(p) = {x}.as_ref().filter(|v| !crate::wire::Empty::is_empty(*v)).and_then(crate::validate::Required::missing) {{"
+            ));
+            w.line(&format!("return Some(format!(\"{}.{{p}}\"));", f.name));
+            w.line("}");
+        } else {
+            return Err(format!(
+                "{}.{}: a nested message of this kind is not checked",
+                m.name, f.name
+            ));
+        }
+    }
+    w.line("None");
+    w.line("}");
+    w.line("}");
+    Ok(())
+}
+
 /// The messages reachable from `roots` through their fields.
 fn closure<'a>(s: &Schema, roots: impl IntoIterator<Item = &'a str>) -> HashSet<String> {
     let mut seen = HashSet::new();
@@ -565,6 +702,12 @@ fn emit_message(
     w.line(&format!("pub struct {} {{", m.name));
     for f in &m.fields {
         let (typ, attr) = field_type(s, f)?;
+        let drops = usage.api.is_some_and(|e| drops_when_empty(s, f, e));
+        let attr = if drops {
+            r#"#[serde(default, skip_serializing_if = "crate::wire::absent")]"#
+        } else {
+            attr
+        };
         let doc = field_doc(f);
         if doc.is_empty() {
             w.line(&format!("/// The `{}` field.", f.name));
@@ -585,6 +728,10 @@ fn emit_message(
                 "/// its own - see [`{}`] - and `None` leaves things as they are.",
                 f.typ
             ));
+        }
+        if usage.input && drops {
+            w.line("///");
+            w.line("/// Not sent when it is empty, as when it is `None`.");
         }
         w.line(attr);
         w.line(&format!("pub {}: {typ},", ident(&f.name)));
@@ -949,6 +1096,14 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
     };
     let inputs = closure(s, cmds.iter().map(|c| c.request.as_str()));
     let groups = const_groups(s, |name| !skip(name)).map_err(|e| format!("api.proto: {e}"))?;
+    let emitted: HashSet<String> = s
+        .messages
+        .iter()
+        .filter(|m| !skip(&m.name))
+        .map(|m| m.name.clone())
+        .collect();
+    let checked = checked_messages(s, &inputs, &emitted);
+    let requests: HashSet<&str> = cmds.iter().map(|c| c.request.as_str()).collect();
 
     let mut w = Writer { out: String::new() };
     w.line("// Code generated by `cargo xtask generate` from proto/api.proto. DO NOT EDIT.");
@@ -970,11 +1125,16 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
             Usage {
                 input: inputs.contains(&m.name),
                 groups: &groups,
+                api: Some(&emitted),
             },
             false,
             &fallback,
             required,
         )?;
+        emit_empty(&mut w, s, m, &emitted);
+        if checked.contains(&m.name) || requests.contains(m.name.as_str()) {
+            emit_required(&mut w, s, m, &emitted, &checked)?;
+        }
     }
     emit_constants(&mut w, &groups);
 
@@ -989,12 +1149,15 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
         w.line(&format!("impl crate::Request for {} {{", c.request));
         w.line(&format!("const METHOD: &'static str = {:?};", c.method));
         w.line(&format!("const PRO_ONLY: bool = {};", c.pro_only));
+        w.line("");
+        w.line("fn validate(&self) -> Result<(), crate::Error> {");
         if VALIDATED.contains(&c.method.as_str()) {
-            w.line("");
-            w.line("fn validate(&self) -> Result<(), crate::Error> {");
+            w.line("crate::validate::required(self)?;");
             w.line(&format!("crate::validate::{}(self)", c.method));
-            w.line("}");
+        } else {
+            w.line("crate::validate::required(self)");
         }
+        w.line("}");
         w.line("}");
     }
 
@@ -1163,6 +1326,7 @@ fn generate_proxy(s: &Schema) -> Result<String, String> {
             Usage {
                 input: inputs.contains(&m.name),
                 groups: &groups,
+                api: None,
             },
             own,
             &fallback,

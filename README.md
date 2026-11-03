@@ -150,7 +150,7 @@ them all, waits between them included, and `attempt_timeout` each one.
 | `BroadcastFailedChannels`, `BatchFailedCommands` | some parts of a broadcast or batch failed - see below |
 | `Http` | the request did not reach the API method: `status`, `body`, `headers`; `err.is_unauthorized()` for refused credentials |
 | `Decode` | the reply was not Centrifugo's - usually `api_endpoint` points elsewhere |
-| `InvalidRequest` | the client could tell the request is wrong and did not send it |
+| `InvalidRequest` | the client could tell the request is wrong and did not send it: a field the protos mark "Required." without a value (`limit_strategy.rate_limit.policies[0].rate is required`), a payload which is not JSON |
 | `InvalidConfig` | the client was not created, or is used where it cannot work: the message names the option and the fix |
 | `Timeout`, `Network`, `Closed` | as their names say |
 | `Callback` | the application's `api_endpoint` or `bearer_token` function failed |

@@ -113,13 +113,17 @@ rest of what CI runs.
 - **`BoolValue` and `Int32Value` fields are `Option<bool>` and `Option<i32>`**:
   `None` leaves the server's setting alone, which `false` cannot say. No
   helper is needed.
-- **Every message field is an `Option`, sent whenever it is `Some`**, even
-  empty: the presence wrappers of spec 2 - `device_update`'s
-  `user_update`, `timezone_update`, `locale_update`, `meta_update` - need
-  nothing of their own, and their docs say an empty one has a meaning.
-- **No required-field checks before sending**: a field marked "Required." is
-  an argument of `new`, so the signature is the check (spec 3.3), and
-  `new("")` sends it empty, as asked.
+- **Every message field is an `Option`, and `Some(empty)` is not sent** but
+  for the presence wrappers of spec 2 - `device_update`'s `user_update`,
+  `timezone_update`, `locale_update`, `meta_update` - which are sent whenever
+  `Some`, even empty: their empty value has a meaning. Any other empty
+  message is left out (`crate::wire::absent`, from the generated
+  `wire::Empty`): Centrifugo refuses `"limit_strategy": {}`.
+- **Required fields are both arguments of `new` and checked before
+  sending** (spec 3.3, 3.5): the signature makes the caller pass a field,
+  but `new("")` passes it empty, which on the wire is missing. The generated
+  `validate::Required` gives the path of the first one without a value;
+  those whose empty value has a meaning are not checked.
 - **`*_all` return a `Pager` with `async fn next`**, not a
   `futures::Stream`: the futures crate is pre-1.0 (invariant 10). The
   blocking client's are `Iterator`s.

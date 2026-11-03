@@ -9,6 +9,23 @@ pub(crate) fn is_default<T: Default + PartialEq>(v: &T) -> bool {
     *v == T::default()
 }
 
+/// A generated message, and whether every field of it is its zero value:
+/// such a message is sent as `{}`.
+pub(crate) trait Empty {
+    fn is_empty(&self) -> bool;
+}
+
+/// Whether a message field is not sent: `None`, or set but empty. Centrifugo
+/// reads some messages by whether they are there - it refuses
+/// `"limit_strategy": {}` for want of `expire_at` - so an empty one is left
+/// out, as Centrifugo's own SDKs leave it (spec 2). The presence wrappers,
+/// whose empty value has a meaning, do not use this: they are sent whenever
+/// they are `Some`.
+#[allow(clippy::ref_option)] // serde's `skip_serializing_if` passes a reference
+pub(crate) fn absent<T: Empty>(v: &Option<T>) -> bool {
+    v.as_ref().is_none_or(Empty::is_empty)
+}
+
 /// Reads `null` as the zero value: Centrifugo leaves zero values out, but a
 /// proxy or another server between may write them as `null`.
 pub(crate) fn nullable<'de, D, T>(d: D) -> Result<T, D::Error>
@@ -110,6 +127,52 @@ mod tests {
         );
         let unset = serde_json::to_string(&DeviceUpdateRequest::new().users(["42"])).unwrap();
         assert_eq!(unset, r#"{"users":["42"]}"#);
+    }
+
+    /// A message set but empty which is not a presence wrapper is not sent
+    /// (spec 2): Centrifugo refuses `"limit_strategy": {}` for want of
+    /// `expire_at`. One holding only empty messages is empty too; one with a
+    /// value is sent.
+    #[test]
+    fn empty_messages_are_not_sent() {
+        use crate::{
+            FcmPushNotification, PushLimitStrategy, PushNotification, PushRateLimitStrategy,
+            PushRecipient, RateLimitPolicy, SendPushNotificationRequest,
+        };
+        let push = || {
+            SendPushNotificationRequest::new(
+                PushRecipient::new().fcm_tokens(["d"]),
+                PushNotification::new().fcm(FcmPushNotification::new(
+                    super::RawValue::from_string("{}".into()).unwrap(),
+                )),
+            )
+        };
+        let want = r#"{"recipient":{"fcm_tokens":["d"]},"notification":{"fcm":{"message":{}}}}"#;
+        for empty in [
+            PushLimitStrategy::new(),
+            PushLimitStrategy::new().rate_limit(PushRateLimitStrategy::new()),
+        ] {
+            let json = serde_json::to_string(&push().limit_strategy(empty)).unwrap();
+            assert_eq!(json, want);
+        }
+        let json =
+            serde_json::to_string(&push().limit_strategy(PushLimitStrategy::new().rate_limit(
+                PushRateLimitStrategy::new().policies([RateLimitPolicy::new(1, 1000)]),
+            )))
+            .unwrap();
+        assert!(
+            json.ends_with(
+                r#""limit_strategy":{"rate_limit":{"policies":[{"rate":1,"interval_ms":1000}]}}}"#
+            ),
+            "{json}"
+        );
+        // Not even a presence wrapper's holder is dropped for being otherwise
+        // empty: the wrapper inside it is a value.
+        let req = DeviceUpdateRequest::new().user_update(DeviceUserUpdate::new(""));
+        assert_eq!(
+            serde_json::to_string(&req).unwrap(),
+            r#"{"user_update":{}}"#
+        );
     }
 
     /// Each constant generated from a "One of:" sentence is its value, named

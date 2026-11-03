@@ -369,8 +369,8 @@ impl BroadcastRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct FilterNode {
-    /// The logical operation of a non-leaf node: "and", "or" or "not".
-    /// Empty for a leaf node.
+    /// The logical operation of a non-leaf node. Empty for a leaf node.
+    /// One of: and, or, not.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -384,8 +384,8 @@ pub struct FilterNode {
         deserialize_with = "crate::wire::nullable"
     )]
     pub key: String,
-    /// The comparison of a leaf node: "eq", "neq", "in", "nin", "ex",
-    /// "nex", "sw", "ew", "ct", "gt", "gte", "lt" or "lte".
+    /// The comparison of a leaf node. One of: eq, neq, in, nin, ex, nex,
+    /// sw, ew, ct, gt, gte, lt, lte.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2381,8 +2381,8 @@ pub struct DeviceRegisterRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub id: String,
-    /// The provider of the device token: fcm, hms, apns or
-    /// webpush. Required.
+    /// The provider of the device token. Required. One of: fcm,
+    /// hms, apns, webpush.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2397,7 +2397,7 @@ pub struct DeviceRegisterRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub token: String,
-    /// The device platform: ios, android or web. Required.
+    /// The device platform. Required. One of: ios, android, web.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2818,7 +2818,7 @@ impl DeviceMetaUpdate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct DeviceTopicsUpdate {
-    /// The operation: add, remove or set. Required.
+    /// The operation. Required. One of: add, remove, set.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -3410,7 +3410,7 @@ pub struct DeviceTopicUpdateRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub device_id: String,
-    /// The operation: add, remove or set. Required.
+    /// The operation. Required. One of: add, remove, set.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -3489,7 +3489,7 @@ pub struct UserTopicUpdateRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub user: String,
-    /// The operation: add, remove or set. Required.
+    /// The operation. Required. One of: add, remove, set.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -3979,6 +3979,7 @@ pub struct PushNotification {
     pub webpush: Option<WebPushPushNotification>,
     /// The Unix time in seconds when Centrifugo stops trying to
     /// send the notification. Not related to the providers' TTL fields.
+    /// Required when the request sets limit_strategy.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -4241,7 +4242,8 @@ pub struct SendPushNotificationRequest {
     pub optimize_for_reliability: bool,
     /// `limit_strategy` sets time constraints and rate limits. Only applies
     /// with a filter recipient; devices are then processed one by one
-    /// instead of in batches.
+    /// instead of in batches. Needs notification.expire_at: a push the limits
+    /// hold back is not tried forever.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit_strategy: Option<PushLimitStrategy>,
     /// The identifier for push notification analytics. If
@@ -4641,8 +4643,8 @@ pub struct UpdatePushStatusRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub analytics_uid: String,
-    /// The status of the push notification: delivered or
-    /// interacted. Required.
+    /// The status of the push notification. Required. One of:
+    /// delivered, interacted.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -4848,9 +4850,9 @@ pub struct MapPublishRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub score: i64,
-    /// `key_mode` makes the publish conditional: "if_new" writes only if the
-    /// key does not exist, "if_exists" only if it exists. Empty always
-    /// writes.
+    /// `key_mode` makes the publish conditional: if_new writes only if the key
+    /// does not exist, if_exists only if it exists. Empty always writes.
+    /// One of: if_new, if_exists.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",

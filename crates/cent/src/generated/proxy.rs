@@ -11,7 +11,7 @@ use serde_json::value::RawValue;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct FilterNode {
-    /// The logical operation: "and", "or" or "not". Empty for a leaf node.
+    /// The logical operation. Empty for a leaf node. One of: and, or, not.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -25,9 +25,9 @@ pub struct FilterNode {
         deserialize_with = "crate::wire::nullable"
     )]
     pub key: String,
-    /// The comparison of a leaf node: "eq", "neq", "in", "nin", "ex"
-    /// (exists), "nex" (does not exist), "sw" (starts with), "ew" (ends with), "ct"
-    /// (contains), "gt", "gte", "lt" or "lte".
+    /// The comparison of a leaf node: ex is exists, nex does not exist,
+    /// sw starts with, ew ends with, ct contains. One of: eq, neq, in, nin, ex,
+    /// nex, sw, ew, ct, gt, gte, lt, lte.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -229,15 +229,16 @@ pub struct ConnectRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -512,6 +513,15 @@ pub struct ConnectResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub labels: BTreeMap<String, String>,
+    /// `profile` assigns the connection to a dictionary compression profile, as the
+    /// profile claim of a connection token does: it overrides the profile the
+    /// client declared. Centrifugo PRO only.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::wire::is_default",
+        deserialize_with = "crate::wire::nullable"
+    )]
+    pub profile: String,
 }
 
 impl ConnectResult {
@@ -530,6 +540,7 @@ impl ConnectResult {
             meta: None,
             caps: Vec::new(),
             labels: BTreeMap::new(),
+            profile: String::new(),
         }
     }
 
@@ -618,6 +629,13 @@ impl ConnectResult {
             .collect();
         self
     }
+
+    /// Sets `profile`.
+    #[must_use]
+    pub fn profile(mut self, value: impl Into<String>) -> Self {
+        self.profile = value.into();
+        self
+    }
 }
 
 /// ChannelsCapability grants operations in channels. A connection may do an
@@ -633,16 +651,16 @@ pub struct ChannelsCapability {
         deserialize_with = "crate::wire::nullable"
     )]
     pub channels: Vec<String>,
-    /// The operations it grants: "sub" (subscribe), "pub" (publish),
-    /// "hst" (history) and "prs" (presence).
+    /// The operations it grants: sub is subscribe, pub publish, hst
+    /// history, prs presence. One of: sub, pub, hst, prs.
     #[serde(
         default,
         skip_serializing_if = "Vec::is_empty",
         deserialize_with = "crate::wire::nullable"
     )]
     pub allow: Vec<String>,
-    /// How channels are matched: empty for exact names, "wildcard" or
-    /// "regex".
+    /// How channels are matched: empty for exact names. One of:
+    /// wildcard, regex.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -718,15 +736,16 @@ pub struct RefreshRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -898,15 +917,16 @@ pub struct SubscribeRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1104,8 +1124,8 @@ pub struct SubscribeResult {
     /// subscription.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub r#override: Option<SubscribeOptionOverride>,
-    /// Capabilities granted in the channel for this subscription:
-    /// "sub", "pub", "hst" and "prs". Centrifugo PRO only.
+    /// Capabilities granted in the channel for this subscription.
+    /// Centrifugo PRO only. One of: sub, pub, hst, prs.
     #[serde(
         default,
         skip_serializing_if = "Vec::is_empty",
@@ -1226,15 +1246,16 @@ pub struct PublishRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1470,15 +1491,16 @@ pub struct MapPublishRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1579,8 +1601,9 @@ pub struct MapPublishResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub score: i64,
-    /// `key_mode` makes the publication conditional: "if_new" publishes only a key
-    /// which does not exist yet, "if_exists" only one which does.
+    /// `key_mode` makes the publication conditional: if_new publishes only a key
+    /// which does not exist yet, if_exists only one which does.
+    /// One of: if_new, if_exists.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1780,15 +1803,16 @@ pub struct MapRemoveRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1937,15 +1961,16 @@ pub struct RpcRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2077,15 +2102,16 @@ pub struct SubRefreshRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2315,9 +2341,9 @@ pub struct ChannelEvent {
         deserialize_with = "crate::wire::nullable"
     )]
     pub channel: String,
-    /// "occupied" when the channel got its first subscriber, "vacated"
+    /// Occupied when the channel got its first subscriber, vacated
     /// when it lost its last one. More types may come; the field is a string,
-    /// not an enum, for JSON interoperability.
+    /// not an enum, for JSON interoperability. One of: occupied, vacated.
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",

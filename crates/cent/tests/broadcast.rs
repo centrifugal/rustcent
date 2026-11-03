@@ -310,6 +310,64 @@ async fn retries_end_with_the_deadline() {
     assert!(fake.requests().len() >= 2, "a hung attempt is retried");
 }
 
+/// `attempt_timeout` is each attempt's own timeout: it replaces
+/// `request_timeout`, longer or shorter, while the call's deadline still ends
+/// an attempt sooner (spec 7.3).
+#[tokio::test]
+async fn attempt_timeout_replaces_request_timeout() {
+    let fake = Fake::new(|_| {
+        Answer::After(
+            Duration::from_millis(150),
+            Box::new(ok(r#"{"result":{"responses":[{"result":{}}]}}"#)),
+        )
+    });
+    for auto in [None, Some(cent::AutoBatch::new(1))] {
+        let mut config = fake.config().request_timeout(Duration::from_millis(20));
+        if let Some(a) = auto {
+            config = config.auto_batch(a);
+        }
+        let client = Client::new(config).unwrap();
+        let once = || BroadcastRetryOptions::default().max_attempts(1);
+        // Longer than request_timeout: the attempt waits for the reply.
+        client
+            .broadcast_with_retry(
+                broadcast(&["a"]),
+                once().attempt_timeout(Duration::from_secs(1)),
+            )
+            .await
+            .unwrap_or_else(|e| {
+                panic!("{auto:?}: an attempt_timeout longer than request_timeout: {e:?}")
+            });
+        // The call's deadline, earlier than attempt_timeout, ends it - a
+        // deadline of the handle, or its own timeout.
+        for c in [
+            client.with_deadline(std::time::Instant::now() + Duration::from_millis(40)),
+            client.with_timeout(Duration::from_millis(40)),
+        ] {
+            let start = std::time::Instant::now();
+            let e = c
+                .broadcast_with_retry(
+                    broadcast(&["a"]),
+                    once().attempt_timeout(Duration::from_secs(1)),
+                )
+                .await
+                .unwrap_err();
+            assert!(e.is_timeout(), "{auto:?}: {e:?}");
+            assert!(
+                start.elapsed() < Duration::from_millis(120),
+                "{:?}",
+                start.elapsed()
+            );
+        }
+        // Without attempt_timeout, request_timeout bounds each attempt.
+        let e = client
+            .broadcast_with_retry(broadcast(&["a"]), once())
+            .await
+            .unwrap_err();
+        assert!(e.is_timeout(), "{auto:?}: {e:?}");
+    }
+}
+
 #[tokio::test]
 async fn batches() {
     let fake = Fake::new(|r| {

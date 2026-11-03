@@ -127,7 +127,8 @@ larger integers silently.
 ## Timeouts
 
 Each call is bounded by one deadline: the client's `request_timeout`, ten
-seconds by default, or one of its own:
+seconds by default, or the call's own timeout, `with_timeout`, which replaces
+it for that call, longer or shorter:
 
 ```rust,no_run
 # async fn run(client: cent::Client) -> Result<(), cent::Error> {
@@ -140,10 +141,22 @@ The deadline bounds the whole call - the endpoint and token functions,
 connecting, the reply read, a reply trickling in included. However a call
 times out, the error is `Error::Timeout`. `with_deadline` gives several calls
 one deadline, such as the attempts of a retry loop and the waits between
-them. A timeout around a call's future, `tokio::time::timeout`, ends it too.
+them. A deadline only shortens a call, never extends it: each call still
+times out after `request_timeout`, or its own `with_timeout`, when that
+comes first - so a handle with a deadline minutes away still gives up on a
+stuck Centrifugo in time. To let calls take longer, raise `request_timeout`
+or give them a timeout of their own. A timeout around a call's future,
+`tokio::time::timeout`, ends it too.
 
-`broadcast_with_retry` makes several requests in one call: its deadline bounds
-them all, waits between them included, and `attempt_timeout` each one.
+`broadcast_with_retry` makes several requests in one call. Each attempt times
+out after `attempt_timeout`, which replaces `request_timeout` for it, longer
+or shorter. The call's deadline - `with_timeout` from its start, or
+`with_deadline` - bounds them all, waits between them included.
+
+With automatic batching a call keeps the deadline it has alone. The batch
+request carrying it lasts until the latest of its calls' deadlines, and at
+least `request_timeout` from when it is sent, so it may outlast a call's: that
+call returns at its deadline, and the batch goes on for the others.
 
 ## Errors
 

@@ -44,11 +44,16 @@ passes; if you find yourself about to break one, stop and say so instead.
    matched by code alone; an unknown code is still one. The transport error
    mode gives the same error as a 200 reply. A reply which is not a JSON
    object of the reply's shape is `Error::Decode`.
-4. **One deadline per call.** `with_timeout`, `with_deadline` or
-   `request_timeout` bounds the whole call - the endpoint and token
-   functions, the connection, the reply read - through `tokio::time::timeout_at`,
-   so a reply trickling in stops at the deadline. Every timeout is
-   `Error::Timeout`, an `HttpClient`'s own included.
+4. **One deadline per call.** `request_timeout`, or the call's own
+   `with_timeout`, which replaces it, from the call's start; a `with_deadline`
+   only shortens it, never extends it (spec 3.2). It bounds the whole call -
+   the endpoint and token functions, the connection, the reply read - through
+   `tokio::time::timeout_at`, so a reply trickling in stops at the deadline.
+   Every timeout is `Error::Timeout`, an `HttpClient`'s own included.
+   `broadcast_with_retry`'s attempts each time out after `attempt_timeout`
+   or `request_timeout`, the call's deadline (`with_timeout` from its start,
+   `with_deadline`) ending them sooner. An automatic batch request lasts
+   until the latest of its calls' deadlines, at least `request_timeout`.
 5. **A payload is carried exactly.** Payloads are `Box<RawValue>` in and out:
    their text, number text included, is sent and returned as it is. JSON
    `null` is `Some` of a null.
@@ -136,9 +141,12 @@ rest of what CI runs.
 - **Maps are `BTreeMap`**: requests encode the same way every time.
 - **`RPCRequest` is `RpcRequest`** in Rust, as Rust names acronyms; the wire
   names do not change.
-- **Per-call deadlines by handle**: `client.with_timeout(d).publish(...)`. A
-  future's own `tokio::time::timeout` ends a call too, but the client's lets it
-  report the timeout and lets an automatic batch know how long its calls wait.
+- **Per-call timeouts and deadlines by handle**:
+  `client.with_timeout(d).publish(...)` is the call's own timeout, replacing
+  `request_timeout`; `client.with_deadline(t)` is the deadline it runs under,
+  which only shortens it - the two kinds of bound of spec 3.2. A future's own
+  `tokio::time::timeout` ends a call too, but the client's lets it report the
+  timeout and lets an automatic batch know how long its calls wait.
 - **`Batch::send` takes the batch**: adding to, or sending, a sent batch does
   not compile, so the spec's `BatchSent` error does not exist.
 - **The async client refuses another runtime** (spec 3.1): its pooled

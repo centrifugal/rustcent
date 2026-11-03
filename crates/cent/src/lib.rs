@@ -31,9 +31,9 @@
 //!   strings: browsers decode JSON numbers as doubles. [`json`] encodes any
 //!   serde type as a payload, and [`PayloadExt::decode`] decodes one:
 //!   `.data(cent::json(&message)?)`, `publication.data.decode::<Message>()?`.
-//! - **One deadline per call**: [`Config::request_timeout`], or
-//!   [`Client::with_timeout`] and [`Client::with_deadline`]; every timeout is
-//!   [`Error::Timeout`].
+//! - **One deadline per call**: [`Config::request_timeout`], or the call's own
+//!   [`Client::with_timeout`], which replaces it; a [`Client::with_deadline`]
+//!   only shortens it, never extends it. Every timeout is [`Error::Timeout`].
 //! - **Every call returns an error unless it did everything asked.** A
 //!   broadcast or batch in which some parts failed returns
 //!   [`Error::BroadcastFailedChannels`] or [`Error::BatchFailedCommands`],

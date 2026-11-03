@@ -112,9 +112,11 @@ mod pager {
     /// `tokio::time::timeout` around it, say - loses nothing: the next call
     /// reads the same page again.
     ///
-    /// Each page is a call of its own, bounded as the client's calls are: by
-    /// [`with_timeout`](Client::with_timeout) each, by
-    /// [`with_deadline`](Client::with_deadline) all together.
+    /// Each page is a call of its own, bounded as the client's calls are:
+    /// each by `request_timeout`, or by
+    /// [`with_timeout`](Client::with_timeout) in its place, and all together
+    /// by [`with_deadline`](Client::with_deadline), which ends the iteration
+    /// when it passes.
     pub struct Pager<T> {
         items: std::vec::IntoIter<T>,
         source: Option<Box<dyn Source<T>>>,

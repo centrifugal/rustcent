@@ -34,6 +34,26 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
   `timezone_update`, `locale_update` and `meta_update`, an empty one of which
   clears the timezone, locale or meta or detaches the devices from their
   user. No type changes.
+- **Breaking:** `request_timeout` bounds every call, and `with_deadline`
+  only shortens a call, never extends it. In 0.1 a handle's deadline
+  replaced `request_timeout`, so a call under a deadline minutes away could
+  wait that long on a stuck Centrifugo; it now gives up after
+  `request_timeout`. To let calls take longer, raise `request_timeout`, or
+  give them a timeout of their own: `with_timeout` still replaces
+  `request_timeout` for a call, longer or shorter. A handle with both keeps
+  both - `with_timeout` no longer drops a deadline set before it, and a
+  second `with_deadline` keeps the earlier one. The blocking client is the
+  same.
+- **Breaking:** `broadcast_with_retry`'s `attempt_timeout` is each attempt's
+  own timeout, replacing `request_timeout` for it - it was capped by the
+  call's deadline, which by default was `request_timeout` for the whole
+  call. Each attempt times out after `attempt_timeout` or `request_timeout`;
+  the call's deadline - `with_timeout` from its start, or `with_deadline` -
+  bounds them all, waits included; without either, `max_attempts` and the
+  attempts' timeouts bound the call.
+- An automatic batch request lasts until the latest of its calls' deadlines,
+  and at least `request_timeout` from when it is sent, as before: it may
+  outlast a call's deadline, which the docs now say.
 - The `User-Agent` is `rustcent/0.2`.
 - The new fields of `proxy::ConnectResult`, `token::ConnectionClaims` and
   `token::SubscriptionClaims` are on `#[non_exhaustive]` structs, built with

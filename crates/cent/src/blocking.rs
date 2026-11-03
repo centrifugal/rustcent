@@ -39,7 +39,7 @@ use crate::{
 #[derive(Clone)]
 pub struct Client {
     inner: Arc<Inner>,
-    bound: Option<Bound>,
+    bound: Bound,
 }
 
 struct Inner {
@@ -88,27 +88,32 @@ impl Client {
                 client,
                 runtime: Mutex::new((std::process::id(), runtime)),
             }),
-            bound: None,
+            bound: Bound::default(),
         })
     }
 
     /// Returns a handle to the same client whose calls each time out after
-    /// `timeout`: see [`crate::Client::with_timeout`].
+    /// `timeout`: the call's own timeout, replacing `request_timeout`, longer
+    /// or shorter - see [`crate::Client::with_timeout`].
     #[must_use]
     pub fn with_timeout(&self, timeout: Duration) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
-            bound: Some(Bound::Timeout(timeout)),
+            bound: self.bound.timeout(timeout),
         }
     }
 
-    /// Returns a handle to the same client whose calls end at `deadline`:
-    /// see [`crate::Client::with_deadline`].
+    /// Returns a handle to the same client whose calls end at `deadline` at
+    /// the latest: a deadline only shortens a call, which still times out
+    /// after `request_timeout` or its own timeout - see
+    /// [`crate::Client::with_deadline`].
     #[must_use]
     pub fn with_deadline(&self, deadline: Instant) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
-            bound: Some(Bound::Deadline(tokio::time::Instant::from_std(deadline))),
+            bound: self
+                .bound
+                .deadline(tokio::time::Instant::from_std(deadline)),
         }
     }
 

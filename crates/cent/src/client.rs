@@ -204,8 +204,12 @@ impl Config {
         self
     }
 
-    /// Bounds each call without a deadline of its own - see
-    /// [`Client::with_timeout`]. 10 seconds by default.
+    /// Bounds every call: the most it waits, 10 seconds by default. A call's
+    /// own timeout, [`Client::with_timeout`], replaces it for that call,
+    /// longer or shorter; a deadline, [`Client::with_deadline`], only
+    /// shortens it - so a handle made with a deadline minutes away still
+    /// gives up on a stuck Centrifugo after `request_timeout`. To let calls
+    /// take longer, raise it, or give them a timeout of their own.
     #[must_use]
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = Some(timeout);
@@ -266,9 +270,12 @@ impl Config {
 /// refuses bodies over 1 MB by default (`client_max_body_size`), failing
 /// every call in the batch with a 413 none of them would get alone: lower
 /// `max_batch_size`, or raise the proxy's limit. Each call keeps its own
-/// deadline in a batch: the batch request lasts until the latest deadline of
-/// its calls, and at least `request_timeout`. A call which times out before
-/// its batch's request ends may still be carried out, as after any timeout.
+/// deadline in a batch, the one it has alone: the batch request lasts until
+/// the latest deadline of its calls, and at least `request_timeout` from when
+/// it is sent, so it may outlast a call's - that call returns at its
+/// deadline, and the batch goes on for the others. A call which times out
+/// before its batch's request ends may still be carried out, as after any
+/// timeout.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AutoBatch {
     max_in_flight: usize,
@@ -345,15 +352,35 @@ pub struct RequestInfo<'a> {
 #[derive(Clone)]
 pub struct Client {
     pub(crate) shared: Arc<Shared>,
-    bound: Option<Bound>,
+    bound: Bound,
 }
 
-/// The deadline of a client's calls, set by [`Client::with_timeout`] and
-/// [`Client::with_deadline`].
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum Bound {
-    Timeout(Duration),
-    Deadline(Instant),
+/// What bounds a client's calls (spec 3.2): a timeout of their own, set by
+/// [`Client::with_timeout`], replacing `request_timeout`, and a deadline,
+/// set by [`Client::with_deadline`], which only shortens it.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Bound {
+    pub(crate) timeout: Option<Duration>,
+    pub(crate) deadline: Option<Instant>,
+}
+
+impl Bound {
+    /// With a timeout of the calls' own, replacing `request_timeout`.
+    pub(crate) fn timeout(self, timeout: Duration) -> Self {
+        Self {
+            timeout: Some(timeout),
+            ..self
+        }
+    }
+
+    /// With a deadline, the earlier of it and the one already set: a
+    /// deadline only shortens.
+    pub(crate) fn deadline(self, deadline: Instant) -> Self {
+        Self {
+            deadline: Some(self.deadline.map_or(deadline, |d| d.min(deadline))),
+            ..self
+        }
+    }
 }
 
 impl fmt::Debug for Client {
@@ -575,13 +602,15 @@ impl Client {
                 calls,
                 engine: RwLock::new(Arc::new(engine)),
             }),
-            bound: None,
+            bound: Bound::default(),
         })
     }
 
     /// Returns a handle to the same client whose calls each time out after
-    /// `timeout` instead of the configured `request_timeout`. It is cheap:
-    /// make one per call that needs it.
+    /// `timeout`: the call's own timeout, which replaces the configured
+    /// `request_timeout` for it, longer or shorter (spec 3.2). A deadline set
+    /// with [`with_deadline`](Self::with_deadline) still ends a call sooner.
+    /// It is cheap: make one per call that needs it.
     ///
     /// ```no_run
     /// # async fn run(client: cent::Client) -> Result<(), cent::Error> {
@@ -597,37 +626,38 @@ impl Client {
     /// how long its calls wait.
     #[must_use]
     pub fn with_timeout(&self, timeout: Duration) -> Self {
-        Self {
-            shared: Arc::clone(&self.shared),
-            bound: Some(Bound::Timeout(timeout)),
-        }
+        self.with_bound(self.bound.timeout(timeout))
     }
 
-    /// Returns a handle to the same client whose calls end at `deadline` - for
-    /// several calls sharing one, such as the attempts of a retry loop and the
-    /// waits between them (see [`wait`](crate::wait)).
+    /// Returns a handle to the same client whose calls end at `deadline` at
+    /// the latest - for several calls sharing one, such as the attempts of a
+    /// retry loop and the waits between them (see [`wait`](crate::wait)).
+    ///
+    /// A deadline only shortens a call, never extends it (spec 3.2): each
+    /// call still times out after `request_timeout`, or its own
+    /// [`with_timeout`](Self::with_timeout), when that comes first. A handle
+    /// with a deadline already keeps the earlier of the two.
     #[must_use]
     pub fn with_deadline(&self, deadline: std::time::Instant) -> Self {
-        Self {
-            shared: Arc::clone(&self.shared),
-            bound: Some(Bound::Deadline(Instant::from_std(deadline))),
-        }
+        self.with_bound(self.bound.deadline(Instant::from_std(deadline)))
     }
 
-    pub(crate) fn with_bound(&self, bound: Option<Bound>) -> Self {
+    pub(crate) fn bound(&self) -> Bound {
+        self.bound
+    }
+
+    pub(crate) fn with_bound(&self, bound: Bound) -> Self {
         Self {
             shared: Arc::clone(&self.shared),
             bound,
         }
     }
 
-    /// The deadline of a call starting now.
+    /// The deadline of a call starting now: its own timeout, or
+    /// `request_timeout`, from now, a deadline the handle has shortening it.
     pub(crate) fn deadline(&self) -> Instant {
-        match self.bound {
-            Some(Bound::Timeout(t)) => after(t),
-            Some(Bound::Deadline(d)) => d,
-            None => after(self.shared.request_timeout),
-        }
+        let timeout = after(self.bound.timeout.unwrap_or(self.shared.request_timeout));
+        self.bound.deadline.map_or(timeout, |d| d.min(timeout))
     }
 
     /// Stops the client: calls made from now on return [`Error::Closed`],

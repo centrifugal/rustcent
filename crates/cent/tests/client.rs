@@ -542,27 +542,77 @@ async fn timeouts() {
     let e = client.info(InfoRequest::new()).await.unwrap_err();
     assert!(e.is_timeout() && retryable(&e), "{e:?}");
     assert!(start.elapsed() < Duration::from_secs(1));
-    // A call's own timeout, and a deadline, take precedence.
+    // A call's own timeout replaces request_timeout: shorter here...
+    let start = std::time::Instant::now();
     let e = client
         .with_timeout(Duration::from_millis(10))
         .info(InfoRequest::new())
         .await
         .unwrap_err();
     assert!(e.is_timeout());
+    assert!(
+        start.elapsed() < Duration::from_millis(45),
+        "{:?}",
+        start.elapsed()
+    );
     let fast =
         Fake::new(|_| Answer::After(Duration::from_millis(100), Box::new(ok(r#"{"result":{}}"#))));
     let client = Client::new(fast.config().request_timeout(Duration::from_millis(10))).unwrap();
+    // ...and longer here.
     client
         .with_timeout(Duration::from_secs(5))
         .info(InfoRequest::new())
         .await
         .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    client
-        .with_deadline(deadline)
+    // A deadline only shortens a call: a later one leaves request_timeout
+    // in force (spec 3.2).
+    let start = std::time::Instant::now();
+    let e = client
+        .with_deadline(std::time::Instant::now() + Duration::from_secs(5))
         .info(InfoRequest::new())
         .await
-        .unwrap();
+        .unwrap_err();
+    assert!(
+        e.is_timeout(),
+        "a later deadline does not extend a call: {e:?}"
+    );
+    assert!(
+        start.elapsed() < Duration::from_millis(80),
+        "{:?}",
+        start.elapsed()
+    );
+    // An earlier one ends it, before request_timeout and the call's own
+    // timeout, in either order.
+    let slow = Client::new(fast.config().request_timeout(Duration::from_secs(60))).unwrap();
+    let soon = || std::time::Instant::now() + Duration::from_millis(20);
+    for c in [
+        slow.with_deadline(soon()),
+        slow.with_deadline(soon())
+            .with_timeout(Duration::from_secs(5)),
+        slow.with_timeout(Duration::from_secs(5))
+            .with_deadline(soon()),
+    ] {
+        let start = std::time::Instant::now();
+        let e = c.info(InfoRequest::new()).await.unwrap_err();
+        assert!(e.is_timeout(), "{e:?}");
+        assert!(
+            start.elapsed() < Duration::from_millis(80),
+            "{:?}",
+            start.elapsed()
+        );
+    }
+    // Two deadlines: the earlier holds.
+    let start = std::time::Instant::now();
+    slow.with_deadline(soon())
+        .with_deadline(std::time::Instant::now() + Duration::from_secs(5))
+        .info(InfoRequest::new())
+        .await
+        .unwrap_err();
+    assert!(
+        start.elapsed() < Duration::from_millis(80),
+        "{:?}",
+        start.elapsed()
+    );
 }
 
 #[tokio::test]

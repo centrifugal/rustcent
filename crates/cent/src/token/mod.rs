@@ -373,13 +373,6 @@ pub struct SubscriptionClaims {
     pub user: String,
     /// The channel the token allows to subscribe to.
     pub channel: String,
-    /// Binds the token to one connection: the `client` claim, the client ID
-    /// Centrifugo gave it. A subscribe or subscription refresh from any other
-    /// connection is refused, so a token which leaks cannot be used
-    /// elsewhere - for a token made for one connection, whose client ID the
-    /// application knows. Empty leaves the token usable by any connection of
-    /// [`user`](Self::user).
-    pub client: String,
     /// Until when the token is accepted: `exp`, left out for [`Expiry::Never`].
     /// The subscription expires then too, unless
     /// [`subscription_expiry`](Self::subscription_expiry) says otherwise.
@@ -423,7 +416,6 @@ impl SubscriptionClaims {
         Self {
             user: user.into(),
             channel: channel.into(),
-            client: String::new(),
             expiry,
             subscription_expiry: None,
             issued_at: None,
@@ -438,13 +430,6 @@ impl SubscriptionClaims {
             allow: Vec::new(),
             server_tags_filter: None,
         }
-    }
-
-    /// Sets [`client`](Self::client).
-    #[must_use]
-    pub fn client(mut self, client: impl Into<String>) -> Self {
-        self.client = client.into();
-        self
     }
 
     /// Sets [`subscription_expiry`](Self::subscription_expiry).
@@ -612,8 +597,6 @@ struct SubscriptionWire<'a> {
     #[serde(flatten)]
     registered: Registered<'a>,
     channel: &'a str,
-    #[serde(skip_serializing_if = "empty_str")]
-    client: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     expire_at: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -680,7 +663,6 @@ pub fn subscription(key: &Key, c: &SubscriptionClaims) -> Result<String, TokenEr
                 &c.issuer,
             )?,
             channel: &c.channel,
-            client: &c.client,
             expire_at: expire_at(c.subscription_expiry)?,
             info: c.info.as_deref(),
             b64info: &c.b64info,

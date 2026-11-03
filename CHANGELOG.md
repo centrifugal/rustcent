@@ -58,9 +58,7 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
   of mixing two states.
 - `position()` on `PublishResult`, `HistoryResult`, `MapReadStateResult` and
   `MapReadStreamResult`: the `StreamPosition` to read on from.
-- `SubscriptionClaims::client`, binding a subscription token to one
-  connection, and `ConnectionClaims::profile`, the Centrifugo PRO
-  compression profile.
+- `ConnectionClaims::profile`, the Centrifugo PRO compression profile.
 - `proxy::ConnectResult::profile` (Centrifugo PRO newer than v6.10.2).
 - The docs of `device_update`'s `user_update`, `timezone_update`,
   `locale_update` and `meta_update` say an empty one is sent, and clears

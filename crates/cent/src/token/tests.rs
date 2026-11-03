@@ -65,9 +65,8 @@ fn claims_in_order() {
     );
     assert!(claims.get("exp").is_none(), "never expiring: no exp");
 
-    // A subscription token's client follows its channel (spec 15.1).
+    // A subscription token's claims, in the order of spec 15.1.
     let s = SubscriptionClaims::new("42", "news", Expiry::At(at(2)))
-        .client("c1")
         .issued_at(at(1))
         .subscription_expiry(Expiry::Never)
         .allow(["pub"]);
@@ -80,7 +79,7 @@ fn claims_in_order() {
     .unwrap();
     assert_eq!(
         text,
-        r#"{"sub":"42","exp":2,"iat":1,"channel":"news","client":"c1","expire_at":0,"allow":["pub"]}"#
+        r#"{"sub":"42","exp":2,"iat":1,"channel":"news","expire_at":0,"allow":["pub"]}"#
     );
 }
 

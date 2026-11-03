@@ -78,7 +78,7 @@ async fn requests_are_posts_of_json_with_headers() {
     assert_eq!(r.method, http::Method::POST);
     assert_eq!(r.uri, "http://centrifugo.test/api/publish");
     assert_eq!(r.headers["content-type"], "application/json");
-    assert_eq!(r.headers["user-agent"], "rustcent/0.1");
+    assert_eq!(r.headers["user-agent"], "rustcent/0.2");
     assert_eq!(r.headers["x-api-key"], "key");
     assert_eq!(r.headers["x-trace"], "1");
     assert_eq!(r.headers["host"], "centrifugo.internal");

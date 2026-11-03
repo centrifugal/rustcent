@@ -22,6 +22,7 @@ cargo add cent
 | `ApiError::temporary`, code 111 (too many requests), refused requests reported as such rather than as internal errors | Centrifugo v6.10.0 or newer |
 | Ed25519 tokens verified without JWKS, by `client.token.ed25519_public_key` | Centrifugo v6.10.2 or newer |
 | Methods marked "Centrifugo PRO only" | Centrifugo PRO v6 |
+| `proxy::ConnectResult::profile` | Centrifugo PRO newer than v6.10.2 |
 
 | Feature | Default | What |
 |---|---|---|
@@ -32,7 +33,7 @@ cargo add cent
 
 cent implements the [Centrifugo server SDK
 specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-version 0.2, whose reference implementation is
+version 0.3, whose reference implementation is
 [gocent](https://github.com/centrifugal/gocent).
 
 ## Example

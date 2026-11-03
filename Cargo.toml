@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/cent", "xtask"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 # MSRV: the floor set by tokio, hyper-util, hyper-rustls and
 # rustls-platform-verifier. CI reads it from here.

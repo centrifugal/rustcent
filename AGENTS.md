@@ -3,7 +3,7 @@
 rustcent - the crate `cent` - is the Rust SDK for Centrifugo's HTTP server API,
 written to the [Centrifugo server SDK
 specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-version 0.2, whose reference implementation is gocent. Applications call it on
+version 0.3, whose reference implementation is gocent. Applications call it on
 their hot paths, from tokio tasks and from plain threads, so it has to be
 correct under concurrency and hard to misuse. Read this before changing code.
 
@@ -12,7 +12,7 @@ correct under concurrency and hard to misuse. Read this before changing code.
 | Path | What |
 |---|---|
 | `proto/api.proto`, `proto/proxy.proto` | Copies of Centrifugo's protos, from a released tag (`cargo xtask sync-proto v6.10.2`) |
-| `xtask/` | The generator: `proto.rs` parses the protos, `generate.rs` writes the code |
+| `xtask/` | The generator: `proto.rs` parses the protos, `generate.rs` writes the code - the types, the constants of the fields whose comment says `One of: ...`, the docs of the presence wrappers - and its tests pin what it reads from the comments |
 | `xtask/required_fields.txt` | The fields the protos mark "Required.", made required arguments of `new` - the reviewed list the other SDKs share. Generation fails when the protos' list differs |
 | `xtask/constructors.txt` | The constructors with several required arguments, in the protos' field order. Generation fails when one changes: a proto reordering two fields of one type would swap what callers pass without a compile error |
 | `crates/cent/src/generated/` | Generated - never edited: request and result types with their constructors and setters, the client, batch, command and blocking client methods, the proxy types |
@@ -21,6 +21,7 @@ correct under concurrency and hard to misuse. Read this before changing code.
 | `crates/cent/src/http_client.rs` | The `HttpClient` trait and `DefaultHttpClient` (hyper, rustls, the OS trust store) |
 | `crates/cent/src/error.rs` | `Error`, its kinds and `retryable` |
 | `crates/cent/src/broadcast.rs`, `retry.rs`, `batch.rs`, `autobatch.rs` | Broadcast results, retries and backoff, batches, automatic batching |
+| `crates/cent/src/pages.rs` | `Pager` and the `*_all` methods of the paged methods, `position()` on the results holding a stream position |
 | `crates/cent/src/blocking.rs` | The blocking client: the async one on a runtime of its own |
 | `crates/cent/src/handler.rs` | `Handler`: the HTTP handlers' framework-free core, and its tower adapter |
 | `crates/cent/src/proxy.rs`, `endpoints.rs`, `token/`, `sharedpoll.rs`, `command.rs` | Proxy handlers, endpoints for client SDKs, tokens and JWKS, shared poll signatures, commands |
@@ -112,6 +113,22 @@ rest of what CI runs.
 - **`BoolValue` and `Int32Value` fields are `Option<bool>` and `Option<i32>`**:
   `None` leaves the server's setting alone, which `false` cannot say. No
   helper is needed.
+- **Every message field is an `Option`, sent whenever it is `Some`**, even
+  empty: the presence wrappers of spec 2 - `device_update`'s
+  `user_update`, `timezone_update`, `locale_update`, `meta_update` - need
+  nothing of their own, and their docs say an empty one has a meaning.
+- **No required-field checks before sending**: a field marked "Required." is
+  an argument of `new`, so the signature is the check (spec 3.3), and
+  `new("")` sends it empty, as asked.
+- **`*_all` return a `Pager` with `async fn next`**, not a
+  `futures::Stream`: the futures crate is pre-1.0 (invariant 10). The
+  blocking client's are `Iterator`s.
+- **The constants are `&str` consts, the fields `String`s**, not enums:
+  Centrifugo adds values, and one without a constant must still be
+  sendable. API constants are at the crate's root, proxy ones in
+  `cent::proxy` - each proto named apart, so `FilterNode`'s `op` is
+  `FILTER_NODE_OP_AND` in the API, where topic updates also have an `op`,
+  and `proxy::OP_AND` in the proxy.
 - **Maps are `BTreeMap`**: requests encode the same way every time.
 - **`RPCRequest` is `RpcRequest`** in Rust, as Rust names acronyms; the wire
   names do not change.

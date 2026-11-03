@@ -76,7 +76,7 @@
 //!
 //! cent implements the [Centrifugo server SDK
 //! specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-//! version 0.2.
+//! version 0.3.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 

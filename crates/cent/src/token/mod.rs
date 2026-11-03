@@ -26,7 +26,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::Serialize;
 use serde_json::value::RawValue;
 
-pub use api::{ApiClaims, ApiTokens, api};
+pub use api::{ApiClaims, ApiTokenSource, api};
 pub use jwks::jwks;
 pub use key::Key;
 

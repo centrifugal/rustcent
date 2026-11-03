@@ -353,14 +353,14 @@ it is called for every request, so return a cached token. Leave both unset
 when mutual TLS, set up in your `HttpClient`, or a proxy authenticates
 instead.
 
-To sign the tokens yourself, `token::ApiTokens` issues them and reuses each for
+To sign the tokens yourself, `token::ApiTokenSource` issues them and reuses each for
 half its lifetime:
 
 ```rust,no_run
 # fn run(api_key: cent::token::Key) -> Result<(), cent::Error> {
-use cent::token::{ApiClaims, ApiTokens};
+use cent::token::{ApiClaims, ApiTokenSource};
 
-let tokens = ApiTokens::new(
+let tokens = ApiTokenSource::new(
     api_key, // its own key - never one of the client tokens
     ApiClaims::new().audience("centrifugo-api").scope(["centrifugo:api"]),
 );

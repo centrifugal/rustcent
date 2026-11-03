@@ -74,6 +74,10 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
   `Error::InvalidConfig` before sending, as a zero `request_timeout` and
   `attempt_timeout` are refused: unset is the default, and zero would time
   out every call.
+- **Breaking:** `token::ApiTokens` is renamed `token::ApiTokenSource`: it
+  read as the plural of `token::api`, a function of another kind - that one
+  signs a token, this one is a source of them for `Config::bearer_token`.
+  `token::api` keeps its name.
 - The `User-Agent` is `rustcent/0.2`.
 - The new fields of `proxy::ConnectResult`, `token::ConnectionClaims` and
   `token::SubscriptionClaims` are on `#[non_exhaustive]` structs, built with

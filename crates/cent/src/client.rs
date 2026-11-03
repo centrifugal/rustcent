@@ -49,9 +49,9 @@ where
 /// Returns the token sent with every request as `Authorization: Bearer`, for
 /// Centrifugo PRO's JWKS authentication of the API: see
 /// [`Config::bearer_token`]. A closure returning a future of
-/// `Result<String, BoxError>` is one, and so is [`token::ApiTokens`].
+/// `Result<String, BoxError>` is one, and so is [`token::ApiTokenSource`].
 ///
-/// [`token::ApiTokens`]: crate::token::ApiTokens
+/// [`token::ApiTokenSource`]: crate::token::ApiTokenSource
 pub trait TokenSource: Send + Sync + 'static {
     /// Returns the token. It is called for every request: return a cached
     /// token, refreshed before it expires.
@@ -174,7 +174,7 @@ impl Config {
     /// Sends the token `source` returns with every request, as
     /// `Authorization: Bearer <token>`, for Centrifugo PRO's JWKS
     /// authentication of the API. It is called for each request, so it should
-    /// return a cached token - [`token::ApiTokens`] signs and caches them. An
+    /// return a cached token - [`token::ApiTokenSource`] signs and caches them. An
     /// error from it, or an empty token, fails the call before anything is
     /// sent. It may not be set together with [`api_key`](Self::api_key):
     /// Centrifugo PRO judges a request with a bearer token by the token
@@ -187,7 +187,7 @@ impl Config {
     /// API tokens carry - otherwise any user can call the API with their
     /// connection token.
     ///
-    /// [`token::ApiTokens`]: crate::token::ApiTokens
+    /// [`token::ApiTokenSource`]: crate::token::ApiTokenSource
     #[must_use]
     pub fn bearer_token(mut self, source: impl TokenSource) -> Self {
         self.bearer_token = Some(Arc::new(source));

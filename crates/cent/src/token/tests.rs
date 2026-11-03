@@ -242,14 +242,14 @@ fn pem_keys() {
 }
 
 #[test]
-fn api_tokens() {
+fn api_token_source() {
     let keys = generated_keys();
     let ed = keys[4].clone();
     let claims = ApiClaims::new()
         .audience("centrifugo-api")
         .scope(["centrifugo:api", "x"])
         .subject("svc");
-    let tokens = ApiTokens::new(ed.clone(), claims.clone());
+    let tokens = ApiTokenSource::new(ed.clone(), claims.clone());
     let t1 = tokens.token().unwrap();
     assert_eq!(t1, tokens.token().unwrap(), "reused for half its ttl");
     let (header, c) = claims_of(&t1);
@@ -258,7 +258,7 @@ fn api_tokens() {
     assert_eq!(c["aud"], "centrifugo-api");
     assert_eq!(c["exp"].as_i64().unwrap() - c["iat"].as_i64().unwrap(), 300);
 
-    let short = ApiTokens::new(ed.clone(), claims.clone()).ttl(Duration::from_millis(1));
+    let short = ApiTokenSource::new(ed.clone(), claims.clone()).ttl(Duration::from_millis(1));
     let s1 = short.token().unwrap();
     std::thread::sleep(Duration::from_millis(1100));
     assert_ne!(s1, short.token().unwrap(), "refreshed past half its ttl");
@@ -282,12 +282,12 @@ fn api_tokens() {
     assert!(api(&ed, &ApiClaims::new().scope(["a b"]).expires_at(exp)).is_err());
     assert!(api(&ed, &ApiClaims::new().scope([""]).expires_at(exp)).is_err());
     assert!(
-        ApiTokens::new(ed.clone(), claims.clone().expires_at(exp))
+        ApiTokenSource::new(ed.clone(), claims.clone().expires_at(exp))
             .token()
             .is_err()
     );
     assert!(
-        ApiTokens::new(ed, claims)
+        ApiTokenSource::new(ed, claims)
             .ttl(Duration::ZERO)
             .token()
             .is_err()

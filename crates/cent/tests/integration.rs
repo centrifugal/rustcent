@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
-use cent::token::{self, ApiClaims, ApiTokens, ConnectionClaims, Key};
+use cent::token::{self, ApiClaims, ApiTokenSource, ConnectionClaims, Key};
 use cent::*;
 use http_body_util::{BodyExt, Full};
 use serde_json::{Value, json};
@@ -1063,7 +1063,7 @@ async fn pro_methods_in_a_batch() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn pro_api_tokens() {
+async fn pro_api_token_source() {
     skip_unless_enabled!();
     if pro().await.is_none() {
         return;
@@ -1088,7 +1088,7 @@ async fn pro_api_tokens() {
     let claims = ApiClaims::new()
         .audience("centrifugo-api")
         .scope(["centrifugo:api"]);
-    publish(Config::new(addr()).bearer_token(ApiTokens::new(key.clone(), claims)))
+    publish(Config::new(addr()).bearer_token(ApiTokenSource::new(key.clone(), claims)))
         .await
         .unwrap();
 

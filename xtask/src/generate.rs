@@ -204,9 +204,11 @@ fn rustfmt(src: &str) -> Result<String, String> {
 
 /// How a message is used, which decides what is generated for it.
 #[derive(Clone, Copy)]
-struct Usage {
+struct Usage<'a> {
     /// Built by applications and sent: it gets `new` and setters.
     input: bool,
+    /// The constants of the fields listing their values.
+    groups: &'a [ConstGroup],
 }
 
 /// A message holding a single `value` field, like `BoolValue`: tri-state,
@@ -531,7 +533,7 @@ fn emit_message(
     w: &mut Writer,
     s: &Schema,
     m: &Message,
-    usage: Usage,
+    usage: Usage<'_>,
     own_constructor: bool,
     doc_fallback: &str,
     required: &mut Reviewed,
@@ -568,6 +570,10 @@ fn emit_message(
             w.line(&format!("/// The `{}` field.", f.name));
         } else {
             w.doc(&doc);
+        }
+        if let Some(line) = constants_doc(usage.groups, &m.name, &f.name) {
+            w.line("///");
+            w.line(&format!("/// {line}"));
         }
         if usage.input
             && wrapper_scalar(s, &f.typ).is_none()
@@ -677,6 +683,183 @@ fn emit_message(
 }
 
 // ---------------------------------------------------------------------------
+// Constants for the values a field lists
+
+/// The values a field's comment lists in the sentence `One of: add, remove,
+/// set.`, or none without one (spec 3.3). A malformed sentence fails the
+/// generation rather than being skipped.
+pub(crate) fn listed_values(doc: &[String]) -> Result<Vec<String>, String> {
+    static VALUE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_]*$").expect("regex"));
+    let joined = doc.join(" ");
+    let Some((_, after)) = joined.split_once("One of:") else {
+        return Ok(Vec::new());
+    };
+    let Some((list, _)) = after.split_once('.') else {
+        return Err(r#"the values after "One of:" must end with a period"#.into());
+    };
+    let mut values: Vec<String> = Vec::new();
+    for v in list.split(',').map(str::trim) {
+        if !VALUE.is_match(v) {
+            return Err(format!(
+                "{v:?} is not a value: lowercase letters, digits and underscores"
+            ));
+        }
+        if values.iter().any(|x| x == v) {
+            return Err(format!("value {v:?} listed twice"));
+        }
+        values.push(v.to_owned());
+    }
+    Ok(values)
+}
+
+/// The constants of a string field with listed values: the values, and the
+/// messages whose field of that name lists exactly them.
+#[derive(Debug)]
+pub(crate) struct ConstGroup {
+    pub(crate) field: String,
+    pub(crate) values: Vec<String>,
+    pub(crate) messages: Vec<String>,
+    /// The message, when the field's name alone would be ambiguous.
+    pub(crate) prefix: Option<String>,
+}
+
+impl ConstGroup {
+    /// The constant of one of the group's values: `OP_ADD` for the `op`
+    /// field's `add`, `FILTER_NODE_OP_AND` with a prefix.
+    pub(crate) fn const_name(&self, value: &str) -> String {
+        let mut name = String::new();
+        if let Some(p) = &self.prefix {
+            name.push_str(&screaming(p));
+            name.push('_');
+        }
+        name.push_str(&self.field.to_uppercase());
+        name.push('_');
+        name.push_str(&value.to_uppercase());
+        name
+    }
+}
+
+/// `FilterNode` as `FILTER_NODE`.
+fn screaming(camel: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in camel.chars().enumerate() {
+        if c.is_uppercase() && i > 0 {
+            out.push('_');
+        }
+        out.push(c.to_ascii_uppercase());
+    }
+    out
+}
+
+/// The fields with listed values of the messages `include` accepts, in the
+/// proto's order. A constant is named by its field and value; where fields
+/// of one name list different values in different messages, the set listed
+/// in the most messages keeps the short name and the others are named by
+/// their message too - `OP_ADD` for the topic updates, `FILTER_NODE_OP_AND`
+/// for `FilterNode` - and a tie names all of them so (spec 3.3).
+pub(crate) fn const_groups(
+    s: &Schema,
+    include: impl Fn(&str) -> bool,
+) -> Result<Vec<ConstGroup>, String> {
+    let mut by_field: Vec<(String, Vec<ConstGroup>)> = Vec::new();
+    for m in s.messages.iter().filter(|m| include(&m.name)) {
+        for f in &m.fields {
+            let values =
+                listed_values(&f.doc).map_err(|e| format!("{}.{}: {e}", m.name, f.name))?;
+            if values.is_empty() {
+                continue;
+            }
+            if f.typ != "string" {
+                return Err(format!(
+                    "{}.{} lists values but is not a string",
+                    m.name, f.name
+                ));
+            }
+            let i = if let Some(i) = by_field.iter().position(|(n, _)| *n == f.name) {
+                i
+            } else {
+                by_field.push((f.name.clone(), Vec::new()));
+                by_field.len() - 1
+            };
+            let groups = &mut by_field[i].1;
+            let g = if let Some(g) = groups.iter().position(|g| g.values == values) {
+                g
+            } else {
+                groups.push(ConstGroup {
+                    field: f.name.clone(),
+                    values,
+                    messages: Vec::new(),
+                    prefix: None,
+                });
+                groups.len() - 1
+            };
+            groups[g].messages.push(m.name.clone());
+        }
+    }
+    let mut out = Vec::new();
+    for (name, mut groups) in by_field {
+        if groups.len() > 1 {
+            let most = groups.iter().map(|g| g.messages.len()).max().unwrap_or(0);
+            let tie = groups.iter().filter(|g| g.messages.len() == most).count() > 1;
+            for g in &mut groups {
+                if g.messages.len() == most && !tie {
+                    continue;
+                }
+                if g.messages.len() > 1 {
+                    return Err(format!(
+                        "field {name} lists {:?} in {:?} and other values elsewhere: cannot name its constants",
+                        g.values, g.messages
+                    ));
+                }
+                g.prefix = Some(g.messages[0].clone());
+            }
+        }
+        out.extend(groups);
+    }
+    Ok(out)
+}
+
+/// Joins words as a sentence does: "a, b and c".
+fn join_and(words: &[String]) -> String {
+    match words {
+        [] => String::new(),
+        [one] => one.clone(),
+        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
+}
+
+/// Writes a constant per listed value.
+fn emit_constants(w: &mut Writer, groups: &[ConstGroup]) {
+    for g in groups {
+        let messages: Vec<String> = g.messages.iter().map(|m| format!("[`{m}`]")).collect();
+        for v in &g.values {
+            w.line("");
+            w.line(&format!(
+                "/// `{v:?}`, a value of the `{}` field of {}. The field is a string: a value",
+                g.field,
+                join_and(&messages)
+            ));
+            w.line("/// Centrifugo accepts which no constant names can still be sent.");
+            w.line(&format!("pub const {}: &str = {v:?};", g.const_name(v)));
+        }
+    }
+}
+
+/// The documentation line naming a field's constants, if it has any.
+fn constants_doc(groups: &[ConstGroup], message: &str, field: &str) -> Option<String> {
+    let g = groups
+        .iter()
+        .find(|g| g.field == field && g.messages.iter().any(|m| m == message))?;
+    let names: Vec<String> = g
+        .values
+        .iter()
+        .map(|v| format!("[`{}`]", g.const_name(v)))
+        .collect();
+    Some(format!("The values have constants: {}.", names.join(", ")))
+}
+
+// ---------------------------------------------------------------------------
 // The API
 
 /// An API method, as the batch `Command` and `Reply` messages declare it: the
@@ -765,6 +948,7 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
             || wrapper_scalar(s, name).is_some()
     };
     let inputs = closure(s, cmds.iter().map(|c| c.request.as_str()));
+    let groups = const_groups(s, |name| !skip(name)).map_err(|e| format!("api.proto: {e}"))?;
 
     let mut w = Writer { out: String::new() };
     w.line("// Code generated by `cargo xtask generate` from proto/api.proto. DO NOT EDIT.");
@@ -785,12 +969,14 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
             m,
             Usage {
                 input: inputs.contains(&m.name),
+                groups: &groups,
             },
             false,
             &fallback,
             required,
         )?;
     }
+    emit_constants(&mut w, &groups);
 
     // Every request knows its method, and the rules the client checks.
     for c in &cmds {
@@ -951,6 +1137,10 @@ fn generate_proxy(s: &Schema) -> Result<String, String> {
         .flat_map(|r| r.fields.iter().map(|f| f.typ.as_str()))
         .collect();
     let inputs = closure(s, results);
+    let groups = const_groups(s, |name| {
+        used.contains(name) && wrapper_scalar(s, name).is_none()
+    })
+    .map_err(|e| format!("proxy.proto: {e}"))?;
 
     let mut w = Writer { out: String::new() };
     w.line("// Code generated by `cargo xtask generate` from proto/proxy.proto. DO NOT EDIT.");
@@ -972,12 +1162,14 @@ fn generate_proxy(s: &Schema) -> Result<String, String> {
             m,
             Usage {
                 input: inputs.contains(&m.name),
+                groups: &groups,
             },
             own,
             &fallback,
             &mut unused,
         )?;
     }
+    emit_constants(&mut w, &groups);
     if !unused.fields.is_empty() {
         let list: Vec<_> = unused.fields.into_iter().collect();
         return Err(format!(
@@ -1247,6 +1439,81 @@ mod tests {
                 "UserTopicUpdateRequest.user",
             ]
         );
+    }
+
+    #[test]
+    fn listed_values_parse() {
+        let doc = |lines: &[&str]| lines.iter().map(|l| (*l).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            listed_values(&doc(&[
+                "op is the operation. Required. One of: add, remove, set."
+            ])),
+            Ok(vec!["add".into(), "remove".into(), "set".into()])
+        );
+        assert_eq!(
+            listed_values(&doc(&[
+                "provider is the provider. Required. One of: fcm,",
+                "hms, apns, webpush."
+            ])),
+            Ok(vec![
+                "fcm".into(),
+                "hms".into(),
+                "apns".into(),
+                "webpush".into()
+            ])
+        );
+        assert_eq!(
+            listed_values(&doc(&["channel is the channel. Required."])),
+            Ok(vec![])
+        );
+        assert!(listed_values(&doc(&["One of: a, b"])).is_err());
+        assert!(listed_values(&doc(&["One of: A, b."])).is_err());
+        assert!(listed_values(&doc(&["One of: a, a."])).is_err());
+        assert!(listed_values(&doc(&["One of: a,, b."])).is_err());
+    }
+
+    fn names(src: &str) -> Result<Vec<String>, String> {
+        let s = proto::parse(src, "test.proto")?;
+        let groups = const_groups(&s, |_| true)?;
+        Ok(groups
+            .iter()
+            .flat_map(|g| g.values.iter().map(|v| g.const_name(v)))
+            .collect())
+    }
+
+    #[test]
+    fn constant_names() {
+        let got = names(
+            "message A {\n  string op = 1; // One of: add, remove.\n}\n\
+             message B {\n  string op = 1; // One of: add, remove.\n}\n\
+             message FilterNode {\n  string op = 1; // One of: and, or.\n  string key_mode = 2; // One of: if_new.\n}\n",
+        );
+        assert_eq!(
+            got.unwrap(),
+            [
+                "OP_ADD",
+                "OP_REMOVE",
+                "FILTER_NODE_OP_AND",
+                "FILTER_NODE_OP_OR",
+                "KEY_MODE_IF_NEW"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tie_names_every_group_by_its_message() {
+        let got = names(
+            "message A {\n  string op = 1; // One of: add.\n}\n\
+             message C {\n  string op = 1; // One of: and.\n}\n",
+        );
+        assert_eq!(got.unwrap(), ["A_OP_ADD", "C_OP_AND"]);
+        let ambiguous = names(
+            "message A {\n  string op = 1; // One of: add.\n}\n\
+             message B {\n  string op = 1; // One of: add.\n}\n\
+             message C {\n  string op = 1; // One of: and.\n}\n\
+             message D {\n  string op = 1; // One of: and.\n}\n",
+        );
+        assert!(ambiguous.is_err());
     }
 
     #[test]

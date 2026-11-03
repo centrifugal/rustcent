@@ -371,6 +371,8 @@ impl BroadcastRequest {
 pub struct FilterNode {
     /// The logical operation of a non-leaf node. Empty for a leaf node.
     /// One of: and, or, not.
+    ///
+    /// The values have constants: [`FILTER_NODE_OP_AND`], [`FILTER_NODE_OP_OR`], [`FILTER_NODE_OP_NOT`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -386,6 +388,8 @@ pub struct FilterNode {
     pub key: String,
     /// The comparison of a leaf node. One of: eq, neq, in, nin, ex, nex,
     /// sw, ew, ct, gt, gte, lt, lte.
+    ///
+    /// The values have constants: [`CMP_EQ`], [`CMP_NEQ`], [`CMP_IN`], [`CMP_NIN`], [`CMP_EX`], [`CMP_NEX`], [`CMP_SW`], [`CMP_EW`], [`CMP_CT`], [`CMP_GT`], [`CMP_GTE`], [`CMP_LT`], [`CMP_LTE`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2383,6 +2387,8 @@ pub struct DeviceRegisterRequest {
     pub id: String,
     /// The provider of the device token. Required. One of: fcm,
     /// hms, apns, webpush.
+    ///
+    /// The values have constants: [`PROVIDER_FCM`], [`PROVIDER_HMS`], [`PROVIDER_APNS`], [`PROVIDER_WEBPUSH`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2398,6 +2404,8 @@ pub struct DeviceRegisterRequest {
     )]
     pub token: String,
     /// The device platform. Required. One of: ios, android, web.
+    ///
+    /// The values have constants: [`PLATFORM_IOS`], [`PLATFORM_ANDROID`], [`PLATFORM_WEB`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2831,6 +2839,8 @@ impl DeviceMetaUpdate {
 #[non_exhaustive]
 pub struct DeviceTopicsUpdate {
     /// The operation. Required. One of: add, remove, set.
+    ///
+    /// The values have constants: [`OP_ADD`], [`OP_REMOVE`], [`OP_SET`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -3423,6 +3433,8 @@ pub struct DeviceTopicUpdateRequest {
     )]
     pub device_id: String,
     /// The operation. Required. One of: add, remove, set.
+    ///
+    /// The values have constants: [`OP_ADD`], [`OP_REMOVE`], [`OP_SET`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -3502,6 +3514,8 @@ pub struct UserTopicUpdateRequest {
     )]
     pub user: String,
     /// The operation. Required. One of: add, remove, set.
+    ///
+    /// The values have constants: [`OP_ADD`], [`OP_REMOVE`], [`OP_SET`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -4657,6 +4671,8 @@ pub struct UpdatePushStatusRequest {
     pub analytics_uid: String,
     /// The status of the push notification. Required. One of:
     /// delivered, interacted.
+    ///
+    /// The values have constants: [`STATUS_DELIVERED`], [`STATUS_INTERACTED`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -4865,6 +4881,8 @@ pub struct MapPublishRequest {
     /// `key_mode` makes the publish conditional: if_new writes only if the key
     /// does not exist, if_exists only if it exists. Empty always writes.
     /// One of: if_new, if_exists.
+    ///
+    /// The values have constants: [`KEY_MODE_IF_NEW`], [`KEY_MODE_IF_EXISTS`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -5658,6 +5676,126 @@ impl SharedPollPublishRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct SharedPollPublishResult {}
+
+/// `"and"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const FILTER_NODE_OP_AND: &str = "and";
+
+/// `"or"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const FILTER_NODE_OP_OR: &str = "or";
+
+/// `"not"`, a value of the `op` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const FILTER_NODE_OP_NOT: &str = "not";
+
+/// `"add"`, a value of the `op` field of [`DeviceTopicsUpdate`], [`DeviceTopicUpdateRequest`] and [`UserTopicUpdateRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const OP_ADD: &str = "add";
+
+/// `"remove"`, a value of the `op` field of [`DeviceTopicsUpdate`], [`DeviceTopicUpdateRequest`] and [`UserTopicUpdateRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const OP_REMOVE: &str = "remove";
+
+/// `"set"`, a value of the `op` field of [`DeviceTopicsUpdate`], [`DeviceTopicUpdateRequest`] and [`UserTopicUpdateRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const OP_SET: &str = "set";
+
+/// `"eq"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_EQ: &str = "eq";
+
+/// `"neq"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_NEQ: &str = "neq";
+
+/// `"in"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_IN: &str = "in";
+
+/// `"nin"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_NIN: &str = "nin";
+
+/// `"ex"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_EX: &str = "ex";
+
+/// `"nex"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_NEX: &str = "nex";
+
+/// `"sw"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_SW: &str = "sw";
+
+/// `"ew"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_EW: &str = "ew";
+
+/// `"ct"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_CT: &str = "ct";
+
+/// `"gt"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_GT: &str = "gt";
+
+/// `"gte"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_GTE: &str = "gte";
+
+/// `"lt"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_LT: &str = "lt";
+
+/// `"lte"`, a value of the `cmp` field of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_LTE: &str = "lte";
+
+/// `"fcm"`, a value of the `provider` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const PROVIDER_FCM: &str = "fcm";
+
+/// `"hms"`, a value of the `provider` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const PROVIDER_HMS: &str = "hms";
+
+/// `"apns"`, a value of the `provider` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const PROVIDER_APNS: &str = "apns";
+
+/// `"webpush"`, a value of the `provider` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const PROVIDER_WEBPUSH: &str = "webpush";
+
+/// `"ios"`, a value of the `platform` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const PLATFORM_IOS: &str = "ios";
+
+/// `"android"`, a value of the `platform` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const PLATFORM_ANDROID: &str = "android";
+
+/// `"web"`, a value of the `platform` field of [`DeviceRegisterRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const PLATFORM_WEB: &str = "web";
+
+/// `"delivered"`, a value of the `status` field of [`UpdatePushStatusRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const STATUS_DELIVERED: &str = "delivered";
+
+/// `"interacted"`, a value of the `status` field of [`UpdatePushStatusRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const STATUS_INTERACTED: &str = "interacted";
+
+/// `"if_new"`, a value of the `key_mode` field of [`MapPublishRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const KEY_MODE_IF_NEW: &str = "if_new";
+
+/// `"if_exists"`, a value of the `key_mode` field of [`MapPublishRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const KEY_MODE_IF_EXISTS: &str = "if_exists";
 
 impl crate::request::Sealed for PublishRequest {}
 

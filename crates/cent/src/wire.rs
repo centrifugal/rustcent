@@ -112,6 +112,82 @@ mod tests {
         assert_eq!(unset, r#"{"users":["42"]}"#);
     }
 
+    /// Each constant generated from a "One of:" sentence is its value, named
+    /// by field and value, with `FilterNode`'s `op` named by its message in
+    /// the API, where the topic updates' `op` is listed in more messages
+    /// (spec 3.3).
+    #[test]
+    fn constants_are_their_values() {
+        use crate::proxy;
+        let api = [
+            (crate::FILTER_NODE_OP_AND, "and"),
+            (crate::FILTER_NODE_OP_OR, "or"),
+            (crate::FILTER_NODE_OP_NOT, "not"),
+            (crate::OP_ADD, "add"),
+            (crate::OP_REMOVE, "remove"),
+            (crate::OP_SET, "set"),
+            (crate::CMP_EQ, "eq"),
+            (crate::CMP_NEQ, "neq"),
+            (crate::CMP_IN, "in"),
+            (crate::CMP_NIN, "nin"),
+            (crate::CMP_EX, "ex"),
+            (crate::CMP_NEX, "nex"),
+            (crate::CMP_SW, "sw"),
+            (crate::CMP_EW, "ew"),
+            (crate::CMP_CT, "ct"),
+            (crate::CMP_GT, "gt"),
+            (crate::CMP_GTE, "gte"),
+            (crate::CMP_LT, "lt"),
+            (crate::CMP_LTE, "lte"),
+            (crate::PROVIDER_FCM, "fcm"),
+            (crate::PROVIDER_HMS, "hms"),
+            (crate::PROVIDER_APNS, "apns"),
+            (crate::PROVIDER_WEBPUSH, "webpush"),
+            (crate::PLATFORM_IOS, "ios"),
+            (crate::PLATFORM_ANDROID, "android"),
+            (crate::PLATFORM_WEB, "web"),
+            (crate::STATUS_DELIVERED, "delivered"),
+            (crate::STATUS_INTERACTED, "interacted"),
+            (crate::KEY_MODE_IF_NEW, "if_new"),
+            (crate::KEY_MODE_IF_EXISTS, "if_exists"),
+        ];
+        let proxy = [
+            (proxy::OP_AND, "and"),
+            (proxy::OP_OR, "or"),
+            (proxy::OP_NOT, "not"),
+            (proxy::CMP_EQ, "eq"),
+            (proxy::CMP_LTE, "lte"),
+            (proxy::PROTOCOL_JSON, "json"),
+            (proxy::PROTOCOL_PROTOBUF, "protobuf"),
+            (proxy::ENCODING_JSON, "json"),
+            (proxy::ENCODING_BINARY, "binary"),
+            (proxy::ALLOW_SUB, "sub"),
+            (proxy::ALLOW_PUB, "pub"),
+            (proxy::ALLOW_HST, "hst"),
+            (proxy::ALLOW_PRS, "prs"),
+            (proxy::MATCH_WILDCARD, "wildcard"),
+            (proxy::MATCH_REGEX, "regex"),
+            (proxy::KEY_MODE_IF_NEW, "if_new"),
+            (proxy::KEY_MODE_IF_EXISTS, "if_exists"),
+            (proxy::TYPE_OCCUPIED, "occupied"),
+            (proxy::TYPE_VACATED, "vacated"),
+        ];
+        for (constant, value) in api.into_iter().chain(proxy) {
+            assert_eq!(constant, value);
+        }
+    }
+
+    /// The fields stay strings: a value no constant names is still sent.
+    #[test]
+    fn a_value_without_a_constant_is_sent() {
+        let req = crate::DeviceRegisterRequest::new("fcm_v2", "x", crate::PLATFORM_IOS);
+        let json = serde_json::to_string(&req).unwrap();
+        assert_eq!(
+            json,
+            r#"{"provider":"fcm_v2","token":"x","platform":"ios"}"#
+        );
+    }
+
     #[test]
     fn null_reads_as_zero() {
         let f: FilterNode =

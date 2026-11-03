@@ -244,6 +244,19 @@ async fn publishes_and_reads_history_payloads_exactly() {
         serde_json::from_str::<Value>(again[0].data.as_ref().unwrap().get()).unwrap(),
         got
     );
+    // What came after the first publication, one to a page.
+    let mut after = c.history_all(HistoryRequest::new(&ch).limit(1).since(res.position()));
+    let mut offsets = Vec::new();
+    while let Some(p) = after.next().await {
+        offsets.push(p.unwrap().offset);
+    }
+    assert_eq!(offsets, [2]);
+    let mut all = c.history_all(HistoryRequest::new(&ch).limit(1));
+    let mut offsets = Vec::new();
+    while let Some(p) = all.next().await {
+        offsets.push(p.unwrap().offset);
+    }
+    assert_eq!(offsets, [1, 2]);
     c.history_remove(HistoryRemoveRequest::new(&ch))
         .await
         .unwrap();
@@ -430,9 +443,25 @@ async fn maps_and_shared_polls() {
     let mut keys: Vec<&str> = state.entries.iter().map(|e| e.key.as_str()).collect();
     keys.sort_unstable();
     assert_eq!(keys, ["k1", "k2"]);
-    c.map_read_stream(MapReadStreamRequest::new(&ch).limit(10))
+    // Every entry, one to a page.
+    let mut entries = c.map_read_state_all(MapReadStateRequest::new(&ch).limit(1));
+    let mut keys = Vec::new();
+    while let Some(e) = entries.next().await {
+        keys.push(e.unwrap().key);
+    }
+    keys.sort_unstable();
+    assert_eq!(keys, ["k1", "k2"]);
+    let pos = state.position();
+    let stream = c
+        .map_read_stream(
+            MapReadStreamRequest::new(&ch)
+                .limit(10)
+                .since_offset(pos.offset)
+                .since_epoch(pos.epoch),
+        )
         .await
         .unwrap();
+    assert_eq!(stream.position().epoch, state.epoch);
     c.map_remove(MapRemoveRequest::new(&ch, "k1"))
         .await
         .unwrap();
@@ -750,7 +779,7 @@ async fn pro_devices_and_push() {
     let user = unique("");
     let reg = c
         .device_register(
-            DeviceRegisterRequest::new("webpush", webpush_token(), "web")
+            DeviceRegisterRequest::new(PROVIDER_WEBPUSH, webpush_token(), PLATFORM_WEB)
                 .user(&user)
                 .meta([("app", "rustcent")])
                 .topics(["news"]),
@@ -776,7 +805,7 @@ async fn pro_devices_and_push() {
         Some("rustcent")
     );
     assert!(list.items[0].topics.iter().any(|t| t == "news"));
-    c.device_topic_update(DeviceTopicUpdateRequest::new(&reg.id, "add").topics(["sport"]))
+    c.device_topic_update(DeviceTopicUpdateRequest::new(&reg.id, OP_ADD).topics(["sport"]))
         .await
         .unwrap();
     let topics = c
@@ -791,7 +820,8 @@ async fn pro_devices_and_push() {
     c.device_update(
         DeviceUpdateRequest::new()
             .ids([&reg.id])
-            .meta_update(DeviceMetaUpdate::new([("app", "updated")])),
+            .meta_update(DeviceMetaUpdate::new([("app", "updated")]))
+            .timezone_update(DeviceTimezoneUpdate::new("Europe/Berlin")),
     )
     .await
     .unwrap();
@@ -807,7 +837,21 @@ async fn pro_devices_and_push() {
         list.items[0].meta.get("app").map(String::as_str),
         Some("updated")
     );
-    c.user_topic_update(UserTopicUpdateRequest::new(&user, "add").topics(["alerts"]))
+    assert_eq!(list.items[0].timezone, "Europe/Berlin");
+    // An empty update is sent, as {}, and clears the timezone.
+    c.device_update(
+        DeviceUpdateRequest::new()
+            .ids([&reg.id])
+            .timezone_update(DeviceTimezoneUpdate::new("")),
+    )
+    .await
+    .unwrap();
+    let list = c
+        .device_list(DeviceListRequest::new().filter(by_user()))
+        .await
+        .unwrap();
+    assert_eq!(list.items[0].timezone, "");
+    c.user_topic_update(UserTopicUpdateRequest::new(&user, OP_ADD).topics(["alerts"]))
         .await
         .unwrap();
     let user_topics = c
@@ -842,7 +886,7 @@ async fn pro_devices_and_push() {
     if let Err(e) = c
         .update_push_status(UpdatePushStatusRequest::new(
             &push.uid,
-            "delivered",
+            STATUS_DELIVERED,
             &reg.id,
         ))
         .await
@@ -861,6 +905,104 @@ async fn pro_devices_and_push() {
     );
 }
 
+/// Pushes with every part of a request a check before sending could look
+/// into - rate and time limits, each setting exactly what Centrifugo
+/// requires, so that a check stricter than Centrifugo's fails here - a device
+/// detached by an empty user update, and devices read page by page.
+#[tokio::test]
+async fn pro_push_parts() {
+    skip_unless_enabled!();
+    let Some(c) = pro().await else { return };
+    let user = unique("");
+    let mut ids = Vec::new();
+    for _ in 0..3 {
+        let reg = c
+            .device_register(
+                DeviceRegisterRequest::new(PROVIDER_WEBPUSH, webpush_token(), PLATFORM_WEB)
+                    .user(&user),
+            )
+            .await
+            .unwrap();
+        ids.push(reg.id);
+    }
+    let by_user = || DeviceFilter::new().users([&user]);
+
+    // Every device, two to a page, async and blocking.
+    let mut seen = Vec::new();
+    let mut devices = c.device_list_all(DeviceListRequest::new().filter(by_user()).limit(2));
+    while let Some(d) = devices.next().await {
+        seen.push(d.unwrap().id);
+    }
+    seen.sort();
+    let mut want = ids.clone();
+    want.sort();
+    assert_eq!(seen, want);
+    #[cfg(feature = "blocking")]
+    {
+        let filter = by_user();
+        let want = want.clone();
+        tokio::task::spawn_blocking(move || {
+            let b = blocking::Client::new(config()).unwrap();
+            let mut seen: Vec<String> = b
+                .device_list_all(DeviceListRequest::new().filter(filter).limit(2))
+                .map(|d| d.unwrap().id)
+                .collect();
+            seen.sort();
+            assert_eq!(seen, want);
+        })
+        .await
+        .unwrap();
+    }
+
+    let rate = PushLimitStrategy::new().rate_limit(
+        PushRateLimitStrategy::new()
+            .key("device.id")
+            .policies([RateLimitPolicy::new(1, 60_000)]),
+    );
+    let time = PushLimitStrategy::new()
+        .time_limit(PushTimeLimitStrategy::new("09:00:00", "21:00:00").no_tz_send_now(true));
+    for (name, strategy) in [("rate limit", rate), ("time limit", time)] {
+        let push = c
+            .send_push_notification(
+                SendPushNotificationRequest::new(
+                    PushRecipient::new().filter(by_user()),
+                    // Centrifugo needs expire_at with a limit strategy: a push
+                    // the limit holds back must not wait forever.
+                    PushNotification::new()
+                        .webpush(WebPushPushNotification::new(raw(&json!({"title": "hi"}))))
+                        .expire_at(now() + 7200),
+                )
+                .limit_strategy(strategy)
+                .send_at(now() + 3600),
+            )
+            .await
+            .unwrap_or_else(|e| panic!("a push with a {name}: {e}"));
+        assert!(!push.uid.is_empty());
+        c.cancel_push(CancelPushRequest::new(&push.uid))
+            .await
+            .unwrap();
+    }
+
+    // An empty user update is sent, as {}, and detaches the device.
+    c.device_update(
+        DeviceUpdateRequest::new()
+            .ids([&ids[0]])
+            .user_update(DeviceUserUpdate::new("")),
+    )
+    .await
+    .unwrap();
+    let list = c
+        .device_list(DeviceListRequest::new().filter(DeviceFilter::new().ids([&ids[0]])))
+        .await
+        .unwrap();
+    assert_eq!(list.items.len(), 1);
+    assert_eq!(list.items[0].user, "");
+
+    c.device_remove(DeviceRemoveRequest::new().ids(ids))
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 async fn pro_methods_in_a_batch() {
     skip_unless_enabled!();
@@ -869,8 +1011,9 @@ async fn pro_methods_in_a_batch() {
     let mut b = c.new_batch(BatchOptions::default());
     b.update_user_status(UpdateUserStatusRequest::new([&user]).state("busy"));
     let status = b.get_user_status(GetUserStatusRequest::new([&user]));
-    let reg = b
-        .device_register(DeviceRegisterRequest::new("webpush", webpush_token(), "web").user(&user));
+    let reg = b.device_register(
+        DeviceRegisterRequest::new(PROVIDER_WEBPUSH, webpush_token(), PLATFORM_WEB).user(&user),
+    );
     let conns = b.connections(ConnectionsRequest::new().user(&user));
     b.send().await.unwrap();
     assert_eq!(status.result().unwrap().statuses[0].state, "busy");

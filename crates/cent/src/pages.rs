@@ -3,7 +3,8 @@
 //! position.
 
 use crate::{
-    HistoryResult, MapReadStateResult, MapReadStreamResult, PublishResult, StreamPosition,
+    HistoryResult, MapPublishResult, MapReadStateResult, MapReadStreamResult, MapRemoveResult,
+    PublishResult, StreamPosition,
 };
 
 impl PublishResult {
@@ -31,6 +32,30 @@ impl MapReadStateResult {
     /// The map channel's stream position when its state was read: as
     /// [`MapReadStreamRequest`](crate::MapReadStreamRequest)'s `since_offset`
     /// and `since_epoch`, it reads the changes made after.
+    #[must_use]
+    pub fn position(&self) -> StreamPosition {
+        StreamPosition::new()
+            .offset(self.offset)
+            .epoch(self.epoch.clone())
+    }
+}
+
+impl MapPublishResult {
+    /// Where the map publication went in the channel's stream: as
+    /// [`MapReadStreamRequest`](crate::MapReadStreamRequest)'s `since_offset`
+    /// and `since_epoch`, it reads the changes made after it.
+    #[must_use]
+    pub fn position(&self) -> StreamPosition {
+        StreamPosition::new()
+            .offset(self.offset)
+            .epoch(self.epoch.clone())
+    }
+}
+
+impl MapRemoveResult {
+    /// Where the removal went in the map channel's stream: as
+    /// [`MapReadStreamRequest`](crate::MapReadStreamRequest)'s `since_offset`
+    /// and `since_epoch`, it reads the changes made after it.
     #[must_use]
     pub fn position(&self) -> StreamPosition {
         StreamPosition::new()

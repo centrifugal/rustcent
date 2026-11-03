@@ -56,8 +56,10 @@ synced again from a released Centrifugo tag before 0.2.0 is published.
   page after the first at the first one's revision, unless the request sets
   one, so that a map state reset between pages fails with code 112 instead
   of mixing two states.
-- `position()` on `PublishResult`, `HistoryResult`, `MapReadStateResult` and
-  `MapReadStreamResult`: the `StreamPosition` to read on from.
+- `position()` on every result holding a stream position: `PublishResult`,
+  `HistoryResult`, `MapPublishResult`, `MapRemoveResult`,
+  `MapReadStateResult` and `MapReadStreamResult` - the `StreamPosition` to
+  read on from.
 - `ConnectionClaims::profile`, the Centrifugo PRO compression profile.
 - `proxy::ConnectResult::profile` (Centrifugo PRO newer than v6.10.2).
 - The docs of `device_update`'s `user_update`, `timezone_update`,

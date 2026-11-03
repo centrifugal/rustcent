@@ -301,6 +301,11 @@ fn positions() {
     assert_eq!(want(state.position()), (3, "c".into()));
     let stream: MapReadStreamResult = serde_json::from_str(r#"{"offset":4,"epoch":"d"}"#).unwrap();
     assert_eq!(want(stream.position()), (4, "d".into()));
+    let map_publish: MapPublishResult =
+        serde_json::from_str(r#"{"offset":5,"epoch":"e"}"#).unwrap();
+    assert_eq!(want(map_publish.position()), (5, "e".into()));
+    let map_remove: MapRemoveResult = serde_json::from_str(r#"{"offset":6,"epoch":"f"}"#).unwrap();
+    assert_eq!(want(map_remove.position()), (6, "f".into()));
 }
 
 #[cfg(feature = "blocking")]

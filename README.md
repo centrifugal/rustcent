@@ -68,8 +68,9 @@ Centrifugo accepts which no constant names can still be sent.
 The paged methods - `history`, `device_list`, `device_topic_list`,
 `user_topic_list` and `map_read_state` - each have an `*_all` method reading
 every item, a page at a time: a page is read when the iteration reaches it,
-and an error ends the iteration. `publish`, `history`, `map_read_state` and
-`map_read_stream` results give their `position()`, from which to read on:
+and an error ends the iteration. Every result holding a stream position -
+`publish`, `history`, `map_publish`, `map_remove`, `map_read_state` and
+`map_read_stream` - gives its `position()`, from which to read on:
 
 ```rust,no_run
 # async fn run(client: cent::Client, data: Box<cent::RawValue>) -> Result<(), cent::Error> {

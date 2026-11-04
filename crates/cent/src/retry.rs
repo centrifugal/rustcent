@@ -183,10 +183,14 @@ impl BroadcastRetryOptions {
         self
     }
 
-    /// Bounds each attempt, while the call's deadline bounds them all, waits
-    /// included: an attempt which hangs times out, and its channels are
-    /// retried while the call has time left. By default the call's deadline
-    /// alone bounds each attempt.
+    /// Each attempt's own timeout, replacing `request_timeout` for it, longer
+    /// or shorter, while the call's deadline - the handle's
+    /// [`with_timeout`](Client::with_timeout) or
+    /// [`with_deadline`](Client::with_deadline) - bounds them all, waits
+    /// included: an attempt ends at the earlier of the two (spec 7.3). An
+    /// attempt which hangs times out, and its channels are retried while the
+    /// call has time left. By default each attempt times out after
+    /// `request_timeout`.
     #[must_use]
     pub fn attempt_timeout(mut self, timeout: Duration) -> Self {
         self.attempt_timeout = Some(timeout);
@@ -296,10 +300,14 @@ impl Client {
     ///   retrying the broadcast later with it, after this call gave up,
     ///   publishes only into the channels which did not get it yet.
     ///
-    /// The call's deadline - its timeout, or `request_timeout` - bounds the
-    /// whole call, the waits between attempts included, and
-    /// `attempt_timeout` each attempt. Once the deadline passes no attempt
-    /// follows.
+    /// Each attempt is a request of its own, timing out after
+    /// `attempt_timeout`, or `request_timeout`. The call's deadline - the
+    /// handle's [`with_timeout`](Client::with_timeout) from the call's
+    /// start, or its [`with_deadline`](Client::with_deadline), whichever
+    /// comes first - bounds the whole call, the waits between attempts
+    /// included: an attempt ends at it, and once it passes no attempt
+    /// follows. Without either, `max_attempts` and the attempts' timeouts
+    /// bound the call.
     ///
     /// It returns as `broadcast` does: every channel's outcome when every
     /// channel got the publication, an [`Error::BroadcastFailedChannels`]
@@ -316,6 +324,7 @@ impl Client {
         if max_attempts == 0 {
             return Err(Error::invalid_request("broadcast", "max_attempts is zero"));
         }
+        self.check_bound()?;
         if options.attempt_timeout.is_some_and(|t| t.is_zero()) {
             return Err(Error::invalid_request(
                 "broadcast",
@@ -325,7 +334,19 @@ impl Client {
         if request.idempotency_key.is_empty() {
             request.idempotency_key = random_key();
         }
-        let deadline = self.deadline();
+        // The call's deadline, bounding every attempt and wait: the handle's
+        // timeout from now and its deadline, the earlier, or none - each
+        // attempt still times out after attempt_timeout or request_timeout.
+        let bound = self.bound();
+        let call_deadline = match (bound.timeout.map(crate::client::after), bound.deadline) {
+            (Some(t), Some(d)) => Some(t.min(d)),
+            (t, d) => t.or(d),
+        };
+        let deadline = call_deadline.unwrap_or_else(|| crate::client::after(Duration::MAX));
+        let attempt_bound = crate::client::Bound {
+            timeout: options.attempt_timeout,
+            deadline: call_deadline,
+        };
         let channels = std::mem::take(&mut request.channels);
         let mut fin = BroadcastResult {
             channels: channels
@@ -352,11 +373,9 @@ impl Client {
             }
             let mut attempt_req = request.clone();
             attempt_req.channels = pending.iter().map(|&i| channels[i].clone()).collect();
-            let attempt_deadline = match options.attempt_timeout {
-                Some(t) => deadline.min(crate::client::after(t)),
-                None => deadline,
-            };
-            let client = self.with_bound(Some(crate::client::Bound::Deadline(attempt_deadline)));
+            // The attempt's own timeout replaces request_timeout; the
+            // call's deadline still ends it sooner.
+            let client = self.with_bound(attempt_bound);
             let outcome = client.broadcast(attempt_req).await;
             let sent = !matches!(outcome, Err(Error::InvalidRequest(_)));
             fin.attempts += u32::from(sent);

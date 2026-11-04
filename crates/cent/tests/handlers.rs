@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-use cent::endpoints::{self, SignedKeys, Unauthorized};
+use cent::endpoints::{self, Forbidden, SignedKeys};
 use cent::proxy::{self, Rejection};
 use cent::{BoxError, Handler};
 use serde_json::{Value, json};
@@ -178,7 +178,7 @@ async fn token_endpoints() {
         {
             Some(u) if u == "bad" => Err("token service down".into()),
             Some(u) => Ok(format!("token-of-{u}")),
-            None => Err(Box::new(std::io::Error::other(Unauthorized)) as BoxError),
+            None => Err(Box::new(std::io::Error::other(Forbidden)) as BoxError),
         }
     });
     let mut r = request("GET", "/t", "");
@@ -191,7 +191,7 @@ async fn token_endpoints() {
     assert_eq!(
         call(&conn, "POST", "ignored").await.0,
         403,
-        "Unauthorized, also wrapped"
+        "Forbidden, also wrapped"
     );
     let mut r = request("POST", "/t", "");
     r.headers_mut().insert("x-user", "bad".parse().unwrap());

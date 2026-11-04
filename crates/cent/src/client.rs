@@ -16,13 +16,13 @@ use tokio::time::Instant;
 
 use crate::autobatch::Batcher;
 use crate::broadcast::ApiErrorWire;
-use crate::error::{CallbackError, DecodeError, HttpError, NetworkError, Source};
+use crate::error::{DecodeError, FunctionError, HttpError, NetworkError, Source};
 use crate::http_client::{BoxFuture, DefaultHttpClient, HttpClient, MAX_ERROR_BODY};
 use crate::{ApiError, BoxError, Error, Request};
 
 /// The `User-Agent` of requests: `<sdk>/<major>` (spec 3.2). Before 1.0 the
 /// minor version is the major one.
-pub(crate) const USER_AGENT_VALUE: &str = "rustcent/0.1";
+pub(crate) const USER_AGENT_VALUE: &str = "rustcent/0.2";
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_MAX_BATCH_SIZE: usize = 1000;
@@ -49,9 +49,9 @@ where
 /// Returns the token sent with every request as `Authorization: Bearer`, for
 /// Centrifugo PRO's JWKS authentication of the API: see
 /// [`Config::bearer_token`]. A closure returning a future of
-/// `Result<String, BoxError>` is one, and so is [`token::ApiTokens`].
+/// `Result<String, BoxError>` is one, and so is [`token::ApiTokenSource`].
 ///
-/// [`token::ApiTokens`]: crate::token::ApiTokens
+/// [`token::ApiTokenSource`]: crate::token::ApiTokenSource
 pub trait TokenSource: Send + Sync + 'static {
     /// Returns the token. It is called for every request: return a cached
     /// token, refreshed before it expires.
@@ -174,7 +174,7 @@ impl Config {
     /// Sends the token `source` returns with every request, as
     /// `Authorization: Bearer <token>`, for Centrifugo PRO's JWKS
     /// authentication of the API. It is called for each request, so it should
-    /// return a cached token - [`token::ApiTokens`] signs and caches them. An
+    /// return a cached token - [`token::ApiTokenSource`] signs and caches them. An
     /// error from it, or an empty token, fails the call before anything is
     /// sent. It may not be set together with [`api_key`](Self::api_key):
     /// Centrifugo PRO judges a request with a bearer token by the token
@@ -187,7 +187,7 @@ impl Config {
     /// API tokens carry - otherwise any user can call the API with their
     /// connection token.
     ///
-    /// [`token::ApiTokens`]: crate::token::ApiTokens
+    /// [`token::ApiTokenSource`]: crate::token::ApiTokenSource
     #[must_use]
     pub fn bearer_token(mut self, source: impl TokenSource) -> Self {
         self.bearer_token = Some(Arc::new(source));
@@ -204,8 +204,14 @@ impl Config {
         self
     }
 
-    /// Bounds each call without a deadline of its own - see
-    /// [`Client::with_timeout`]. 10 seconds by default.
+    /// Bounds every call: the most it waits, 10 seconds by default. A call's
+    /// own timeout, [`Client::with_timeout`], replaces it for that call,
+    /// longer or shorter; a deadline, [`Client::with_deadline`], only
+    /// shortens it - so a handle made with a deadline minutes away still
+    /// gives up on a stuck Centrifugo after `request_timeout`. To let calls
+    /// take longer, raise it, or give them a timeout of their own. It cannot
+    /// be turned off: unset is the default, and zero is refused by
+    /// [`Client::new`].
     #[must_use]
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = Some(timeout);
@@ -266,9 +272,12 @@ impl Config {
 /// refuses bodies over 1 MB by default (`client_max_body_size`), failing
 /// every call in the batch with a 413 none of them would get alone: lower
 /// `max_batch_size`, or raise the proxy's limit. Each call keeps its own
-/// deadline in a batch: the batch request lasts until the latest deadline of
-/// its calls, and at least `request_timeout`. A call which times out before
-/// its batch's request ends may still be carried out, as after any timeout.
+/// deadline in a batch, the one it has alone: the batch request lasts until
+/// the latest deadline of its calls, and at least `request_timeout` from when
+/// it is sent, so it may outlast a call's - that call returns at its
+/// deadline, and the batch goes on for the others. A call which times out
+/// before its batch's request ends may still be carried out, as after any
+/// timeout.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AutoBatch {
     max_in_flight: usize,
@@ -345,15 +354,35 @@ pub struct RequestInfo<'a> {
 #[derive(Clone)]
 pub struct Client {
     pub(crate) shared: Arc<Shared>,
-    bound: Option<Bound>,
+    bound: Bound,
 }
 
-/// The deadline of a client's calls, set by [`Client::with_timeout`] and
-/// [`Client::with_deadline`].
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum Bound {
-    Timeout(Duration),
-    Deadline(Instant),
+/// What bounds a client's calls (spec 3.2): a timeout of their own, set by
+/// [`Client::with_timeout`], replacing `request_timeout`, and a deadline,
+/// set by [`Client::with_deadline`], which only shortens it.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Bound {
+    pub(crate) timeout: Option<Duration>,
+    pub(crate) deadline: Option<Instant>,
+}
+
+impl Bound {
+    /// With a timeout of the calls' own, replacing `request_timeout`.
+    pub(crate) fn timeout(self, timeout: Duration) -> Self {
+        Self {
+            timeout: Some(timeout),
+            ..self
+        }
+    }
+
+    /// With a deadline, the earlier of it and the one already set: a
+    /// deadline only shortens.
+    pub(crate) fn deadline(self, deadline: Instant) -> Self {
+        Self {
+            deadline: Some(self.deadline.map_or(deadline, |d| d.min(deadline))),
+            ..self
+        }
+    }
 }
 
 impl fmt::Debug for Client {
@@ -575,13 +604,16 @@ impl Client {
                 calls,
                 engine: RwLock::new(Arc::new(engine)),
             }),
-            bound: None,
+            bound: Bound::default(),
         })
     }
 
     /// Returns a handle to the same client whose calls each time out after
-    /// `timeout` instead of the configured `request_timeout`. It is cheap:
-    /// make one per call that needs it.
+    /// `timeout`: the call's own timeout, which replaces the configured
+    /// `request_timeout` for it, longer or shorter (spec 3.2). Zero is
+    /// refused: the calls fail with [`Error::InvalidConfig`]. A deadline set
+    /// with [`with_deadline`](Self::with_deadline) still ends a call sooner.
+    /// It is cheap: make one per call that needs it.
     ///
     /// ```no_run
     /// # async fn run(client: cent::Client) -> Result<(), cent::Error> {
@@ -597,37 +629,49 @@ impl Client {
     /// how long its calls wait.
     #[must_use]
     pub fn with_timeout(&self, timeout: Duration) -> Self {
-        Self {
-            shared: Arc::clone(&self.shared),
-            bound: Some(Bound::Timeout(timeout)),
-        }
+        self.with_bound(self.bound.timeout(timeout))
     }
 
-    /// Returns a handle to the same client whose calls end at `deadline` - for
-    /// several calls sharing one, such as the attempts of a retry loop and the
-    /// waits between them (see [`wait`](crate::wait)).
+    /// Returns a handle to the same client whose calls end at `deadline` at
+    /// the latest - for several calls sharing one, such as the attempts of a
+    /// retry loop and the waits between them (see [`wait`](crate::wait)).
+    ///
+    /// A deadline only shortens a call, never extends it (spec 3.2): each
+    /// call still times out after `request_timeout`, or its own
+    /// [`with_timeout`](Self::with_timeout), when that comes first. A handle
+    /// with a deadline already keeps the earlier of the two.
     #[must_use]
     pub fn with_deadline(&self, deadline: std::time::Instant) -> Self {
-        Self {
-            shared: Arc::clone(&self.shared),
-            bound: Some(Bound::Deadline(Instant::from_std(deadline))),
-        }
+        self.with_bound(self.bound.deadline(Instant::from_std(deadline)))
     }
 
-    pub(crate) fn with_bound(&self, bound: Option<Bound>) -> Self {
+    pub(crate) fn bound(&self) -> Bound {
+        self.bound
+    }
+
+    pub(crate) fn with_bound(&self, bound: Bound) -> Self {
         Self {
             shared: Arc::clone(&self.shared),
             bound,
         }
     }
 
-    /// The deadline of a call starting now.
-    pub(crate) fn deadline(&self) -> Instant {
-        match self.bound {
-            Some(Bound::Timeout(t)) => after(t),
-            Some(Bound::Deadline(d)) => d,
-            None => after(self.shared.request_timeout),
+    /// Refuses a zero [`with_timeout`](Self::with_timeout), which would time
+    /// out every call: unset is the default, `request_timeout` (spec 3.1).
+    pub(crate) fn check_bound(&self) -> Result<(), Error> {
+        if self.bound.timeout.is_some_and(|t| t.is_zero()) {
+            return Err(Error::invalid_config(
+                "with_timeout is zero, which times out every call: give a timeout above zero, or leave it unset for request_timeout",
+            ));
         }
+        Ok(())
+    }
+
+    /// The deadline of a call starting now: its own timeout, or
+    /// `request_timeout`, from now, a deadline the handle has shortening it.
+    pub(crate) fn deadline(&self) -> Instant {
+        let timeout = after(self.bound.timeout.unwrap_or(self.shared.request_timeout));
+        self.bound.deadline.map_or(timeout, |d| d.min(timeout))
     }
 
     /// Stops the client: calls made from now on return [`Error::Closed`],
@@ -723,6 +767,7 @@ impl Client {
         &self,
         request: R,
     ) -> Result<T, Error> {
+        self.check_bound()?;
         request.validate()?;
         let _call = self.shared.enter()?;
         let engine = self.engine()?;
@@ -803,8 +848,11 @@ impl Client {
                 let url = f
                     .endpoint()
                     .await
-                    .map_err(|e| callback("api_endpoint", e.into()))?;
-                check_endpoint(&url).map_err(|e| callback("api_endpoint", message(e)))?
+                    .map_err(|e| function_error(ENDPOINT_FN, e.into()))?;
+                // What the function returns is the configuration: one which
+                // cannot be sent is refused as Client::new refuses it.
+                check_endpoint(&url)
+                    .map_err(|e| Error::invalid_config(format!("{ENDPOINT_FN} returned {e}")))?
             }
         };
         let mut auth = None;
@@ -812,22 +860,19 @@ impl Client {
             let token = source
                 .token()
                 .await
-                .map_err(|e| callback("bearer_token", e.into()))?;
+                .map_err(|e| function_error(TOKEN_FN, e.into()))?;
             match header_value(&format!("Bearer {token}")) {
                 Some(v) if !token.is_empty() => auth = Some(v),
                 _ => {
-                    return Err(callback(
-                        "bearer_token",
-                        message(
-                            "returned an empty token, or one with a line break or another control character",
-                        ),
-                    ));
+                    return Err(Error::invalid_config(format!(
+                        "{TOKEN_FN} returned an empty token, or one with a line break or another control character"
+                    )));
                 }
             }
         }
         let mut request = http::Request::post(format!("{base}/{method}"))
             .body(Bytes::from(body))
-            .map_err(|e| callback("api_endpoint", Arc::new(e)))?;
+            .map_err(|e| Error::invalid_config(format!("api endpoint {base:?}: {e}")))?;
         *request.headers_mut() = shared.headers.clone();
         if let Some(auth) = auth {
             request.headers_mut().insert(AUTHORIZATION, auth);
@@ -875,13 +920,13 @@ fn trim_ascii(b: &[u8]) -> &[u8] {
     &b[start..end]
 }
 
-/// An error source holding only a message.
-fn message(m: impl Into<String>) -> Source {
-    Arc::from(BoxError::from(m.into()))
-}
+/// The functions of the configuration, as [`Config`] names them: the
+/// messages of their errors name them so.
+const ENDPOINT_FN: &str = "with_endpoint_fn";
+const TOKEN_FN: &str = "bearer_token";
 
-fn callback(which: &'static str, source: Source) -> Error {
-    Error::Callback(CallbackError::new(which, source))
+fn function_error(function: &'static str, source: Source) -> Error {
+    Error::Function(FunctionError::new(function, source))
 }
 
 /// The envelope every method replies with.

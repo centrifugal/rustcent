@@ -9,6 +9,23 @@ pub(crate) fn is_default<T: Default + PartialEq>(v: &T) -> bool {
     *v == T::default()
 }
 
+/// A generated message, and whether every field of it is its zero value:
+/// such a message is sent as `{}`.
+pub(crate) trait Empty {
+    fn is_empty(&self) -> bool;
+}
+
+/// Whether a message field is not sent: `None`, or set but empty. Centrifugo
+/// reads some messages by whether they are there - it refuses
+/// `"limit_strategy": {}` for want of `expire_at` - so an empty one is left
+/// out, as Centrifugo's own SDKs leave it (spec 2). The presence wrappers,
+/// whose empty value has a meaning, do not use this: they are sent whenever
+/// they are `Some`.
+#[allow(clippy::ref_option)] // serde's `skip_serializing_if` passes a reference
+pub(crate) fn absent<T: Empty>(v: &Option<T>) -> bool {
+    v.as_ref().is_none_or(Empty::is_empty)
+}
+
 /// Reads `null` as the zero value: Centrifugo leaves zero values out, but a
 /// proxy or another server between may write them as `null`.
 pub(crate) fn nullable<'de, D, T>(d: D) -> Result<T, D::Error>
@@ -62,7 +79,12 @@ pub(crate) mod wrapped {
 
 #[cfg(test)]
 mod tests {
-    use crate::{FilterNode, SubscribeOptionOverride, SubscribeRequest};
+    use std::collections::BTreeMap;
+
+    use crate::{
+        DeviceLocaleUpdate, DeviceMetaUpdate, DeviceTimezoneUpdate, DeviceUpdateRequest,
+        DeviceUserUpdate, FilterNode, SubscribeOptionOverride, SubscribeRequest,
+    };
 
     #[test]
     fn zero_values_are_not_sent() {
@@ -85,6 +107,147 @@ mod tests {
         assert_eq!(back.presence, Some(true));
         assert_eq!(back.join_leave, Some(false));
         assert_eq!(back.force_recovery, None);
+    }
+
+    /// The updates of `device_update` are presence wrappers (spec 2): an
+    /// empty one clears or detaches, so it is sent as `{}`, and one left
+    /// unset is not sent.
+    #[test]
+    fn empty_presence_wrappers_are_sent() {
+        let req = DeviceUpdateRequest::new()
+            .users(["42"])
+            .user_update(DeviceUserUpdate::new(""))
+            .timezone_update(DeviceTimezoneUpdate::new(""))
+            .locale_update(DeviceLocaleUpdate::new(""))
+            .meta_update(DeviceMetaUpdate::new(BTreeMap::<String, String>::new()));
+        let json = serde_json::to_string(&req).unwrap();
+        assert_eq!(
+            json,
+            r#"{"users":["42"],"user_update":{},"meta_update":{},"timezone_update":{},"locale_update":{}}"#
+        );
+        let unset = serde_json::to_string(&DeviceUpdateRequest::new().users(["42"])).unwrap();
+        assert_eq!(unset, r#"{"users":["42"]}"#);
+    }
+
+    /// A message set but empty which is not a presence wrapper is not sent
+    /// (spec 2): Centrifugo refuses `"limit_strategy": {}` for want of
+    /// `expire_at`. One holding only empty messages is empty too; one with a
+    /// value is sent.
+    #[test]
+    fn empty_messages_are_not_sent() {
+        use crate::{
+            FcmPushNotification, PushLimitStrategy, PushNotification, PushRateLimitStrategy,
+            PushRecipient, RateLimitPolicy, SendPushNotificationRequest,
+        };
+        let push = || {
+            SendPushNotificationRequest::new(
+                PushRecipient::new().fcm_tokens(["d"]),
+                PushNotification::new().fcm(FcmPushNotification::new(
+                    super::RawValue::from_string("{}".into()).unwrap(),
+                )),
+            )
+        };
+        let want = r#"{"recipient":{"fcm_tokens":["d"]},"notification":{"fcm":{"message":{}}}}"#;
+        for empty in [
+            PushLimitStrategy::new(),
+            PushLimitStrategy::new().rate_limit(PushRateLimitStrategy::new()),
+        ] {
+            let json = serde_json::to_string(&push().limit_strategy(empty)).unwrap();
+            assert_eq!(json, want);
+        }
+        let json =
+            serde_json::to_string(&push().limit_strategy(PushLimitStrategy::new().rate_limit(
+                PushRateLimitStrategy::new().policies([RateLimitPolicy::new(1, 1000)]),
+            )))
+            .unwrap();
+        assert!(
+            json.ends_with(
+                r#""limit_strategy":{"rate_limit":{"policies":[{"rate":1,"interval_ms":1000}]}}}"#
+            ),
+            "{json}"
+        );
+        // Not even a presence wrapper's holder is dropped for being otherwise
+        // empty: the wrapper inside it is a value.
+        let req = DeviceUpdateRequest::new().user_update(DeviceUserUpdate::new(""));
+        assert_eq!(
+            serde_json::to_string(&req).unwrap(),
+            r#"{"user_update":{}}"#
+        );
+    }
+
+    /// Each constant generated from a "One of:" sentence is its value, named
+    /// by the name the spec pins for its field and the value - the same in
+    /// both protos, as `FILTER_NODE_OP_AND` (spec 3.3).
+    #[test]
+    fn constants_are_their_values() {
+        use crate::proxy;
+        let api = [
+            (crate::FILTER_NODE_OP_AND, "and"),
+            (crate::FILTER_NODE_OP_OR, "or"),
+            (crate::FILTER_NODE_OP_NOT, "not"),
+            (crate::OP_ADD, "add"),
+            (crate::OP_REMOVE, "remove"),
+            (crate::OP_SET, "set"),
+            (crate::CMP_EQ, "eq"),
+            (crate::CMP_NEQ, "neq"),
+            (crate::CMP_IN, "in"),
+            (crate::CMP_NIN, "nin"),
+            (crate::CMP_EX, "ex"),
+            (crate::CMP_NEX, "nex"),
+            (crate::CMP_SW, "sw"),
+            (crate::CMP_EW, "ew"),
+            (crate::CMP_CT, "ct"),
+            (crate::CMP_GT, "gt"),
+            (crate::CMP_GTE, "gte"),
+            (crate::CMP_LT, "lt"),
+            (crate::CMP_LTE, "lte"),
+            (crate::PROVIDER_FCM, "fcm"),
+            (crate::PROVIDER_HMS, "hms"),
+            (crate::PROVIDER_APNS, "apns"),
+            (crate::PROVIDER_WEBPUSH, "webpush"),
+            (crate::PLATFORM_IOS, "ios"),
+            (crate::PLATFORM_ANDROID, "android"),
+            (crate::PLATFORM_WEB, "web"),
+            (crate::STATUS_DELIVERED, "delivered"),
+            (crate::STATUS_INTERACTED, "interacted"),
+            (crate::KEY_MODE_IF_NEW, "if_new"),
+            (crate::KEY_MODE_IF_EXISTS, "if_exists"),
+        ];
+        let proxy = [
+            (proxy::FILTER_NODE_OP_AND, "and"),
+            (proxy::FILTER_NODE_OP_OR, "or"),
+            (proxy::FILTER_NODE_OP_NOT, "not"),
+            (proxy::CMP_EQ, "eq"),
+            (proxy::CMP_LTE, "lte"),
+            (proxy::PROTOCOL_JSON, "json"),
+            (proxy::PROTOCOL_PROTOBUF, "protobuf"),
+            (proxy::ENCODING_JSON, "json"),
+            (proxy::ENCODING_BINARY, "binary"),
+            (proxy::ALLOW_SUB, "sub"),
+            (proxy::ALLOW_PUB, "pub"),
+            (proxy::ALLOW_HST, "hst"),
+            (proxy::ALLOW_PRS, "prs"),
+            (proxy::CAPABILITY_MATCH_WILDCARD, "wildcard"),
+            (proxy::CAPABILITY_MATCH_REGEX, "regex"),
+            (proxy::KEY_MODE_IF_NEW, "if_new"),
+            (proxy::KEY_MODE_IF_EXISTS, "if_exists"),
+            (proxy::CHANNEL_EVENT_TYPE_OCCUPIED, "occupied"),
+            (proxy::CHANNEL_EVENT_TYPE_VACATED, "vacated"),
+        ];
+        for (constant, value) in api.into_iter().chain(proxy) {
+            assert_eq!(constant, value);
+        }
+    }
+
+    /// The fields stay strings: a value no constant names is still sent.
+    #[test]
+    fn a_value_without_a_constant_is_sent() {
+        let req = crate::DeviceRegisterRequest::new("fcm_v2", "x", crate::PLATFORM_IOS);
+        let json = serde_json::to_string(&req).unwrap();
+        assert_eq!(
+            json,
+            r#"{"provider":"fcm_v2","token":"x","platform":"ios"}"#
+        );
     }
 
     #[test]

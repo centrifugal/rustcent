@@ -68,35 +68,170 @@ async fn every_method_reaches_its_endpoint() {
     let fake = Fake::centrifugo();
     let client = Client::new(fake.config()).unwrap();
     client
-        .publish(PublishRequest::new("x").data(raw("{}")))
+        .publish(
+            PublishRequest::new("x")
+                .data(raw("{}"))
+                .b64data("x")
+                .skip_history(true)
+                .tags([("k", "x")])
+                .idempotency_key("x")
+                .delta(true)
+                .version(1)
+                .version_epoch("x"),
+        )
         .await
         .unwrap();
     client
-        .broadcast(BroadcastRequest::new(["x"]).data(raw("{}")))
+        .broadcast(
+            BroadcastRequest::new(["x"])
+                .data(raw("{}"))
+                .b64data("x")
+                .skip_history(true)
+                .tags([("k", "x")])
+                .idempotency_key("x")
+                .delta(true)
+                .version(1)
+                .version_epoch("x"),
+        )
         .await
         .unwrap();
-    client.subscribe(SubscribeRequest::new("x")).await.unwrap();
     client
-        .unsubscribe(UnsubscribeRequest::new("x"))
+        .subscribe(
+            SubscribeRequest::new("x")
+                .user("x")
+                .expire_at(1)
+                .info(raw("{}"))
+                .b64info("x")
+                .client("x")
+                .data(raw("{}"))
+                .b64data("x")
+                .recover_since(StreamPosition::new().offset(1).epoch("x"))
+                .r#override(
+                    SubscribeOptionOverride::new()
+                        .presence(true)
+                        .join_leave(true)
+                        .force_recovery(true)
+                        .force_positioning(true)
+                        .force_push_join_leave(true),
+                )
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
         .await
         .unwrap();
-    client.disconnect(DisconnectRequest::new()).await.unwrap();
+    client
+        .unsubscribe(
+            UnsubscribeRequest::new("x")
+                .user("x")
+                .client("x")
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .await
+        .unwrap();
+    client
+        .disconnect(
+            DisconnectRequest::new()
+                .user("x")
+                .disconnect(Disconnect::new().code(1).reason("x"))
+                .client("x")
+                .whitelist(["x"])
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .await
+        .unwrap();
     client.presence(PresenceRequest::new("x")).await.unwrap();
     client
         .presence_stats(PresenceStatsRequest::new("x"))
         .await
         .unwrap();
-    client.history(HistoryRequest::new("x")).await.unwrap();
+    client
+        .history(
+            HistoryRequest::new("x")
+                .limit(1)
+                .since(StreamPosition::new().offset(1).epoch("x"))
+                .reverse(true),
+        )
+        .await
+        .unwrap();
     client
         .history_remove(HistoryRemoveRequest::new("x"))
         .await
         .unwrap();
     client.info(InfoRequest::new()).await.unwrap();
-    client.refresh(RefreshRequest::new()).await.unwrap();
-    client.channels(ChannelsRequest::new()).await.unwrap();
-    client.connections(ConnectionsRequest::new()).await.unwrap();
     client
-        .update_user_status(UpdateUserStatusRequest::new(["x"]))
+        .refresh(
+            RefreshRequest::new()
+                .user("x")
+                .client("x")
+                .expired(true)
+                .expire_at(1)
+                .info(raw("{}"))
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .await
+        .unwrap();
+    client
+        .channels(ChannelsRequest::new().pattern("x"))
+        .await
+        .unwrap();
+    client
+        .connections(
+            ConnectionsRequest::new()
+                .user("x")
+                .expression("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                ),
+        )
+        .await
+        .unwrap();
+    client
+        .update_user_status(UpdateUserStatusRequest::new(["x"]).state("x"))
         .await
         .unwrap();
     client
@@ -107,57 +242,171 @@ async fn every_method_reaches_its_endpoint() {
         .delete_user_status(DeleteUserStatusRequest::new(["x"]))
         .await
         .unwrap();
-    client.block_user(BlockUserRequest::new("x")).await.unwrap();
+    client
+        .block_user(BlockUserRequest::new("x").expire_at(1))
+        .await
+        .unwrap();
     client
         .unblock_user(UnblockUserRequest::new("x"))
         .await
         .unwrap();
     client
-        .revoke_token(RevokeTokenRequest::new("x"))
+        .revoke_token(RevokeTokenRequest::new("x").expire_at(1))
         .await
         .unwrap();
     client
-        .invalidate_user_tokens(InvalidateUserTokensRequest::new("x"))
+        .invalidate_user_tokens(
+            InvalidateUserTokensRequest::new("x")
+                .expire_at(1)
+                .issued_before(1)
+                .channel("x"),
+        )
         .await
         .unwrap();
     client
-        .device_register(DeviceRegisterRequest::new("x", "x", "x"))
+        .device_register(
+            DeviceRegisterRequest::new("x", "x", "x")
+                .id("x")
+                .user("x")
+                .meta([("k", "x")])
+                .topics(["x"])
+                .timezone("x")
+                .locale("x"),
+        )
         .await
         .unwrap();
     client
-        .device_update(DeviceUpdateRequest::new())
+        .device_update(
+            DeviceUpdateRequest::new()
+                .ids(["x"])
+                .users(["x"])
+                .user_update(DeviceUserUpdate::new("x"))
+                .meta_update(DeviceMetaUpdate::new([("k", "x")]))
+                .topics_update(DeviceTopicsUpdate::new("x").topics(["x"]))
+                .timezone_update(DeviceTimezoneUpdate::new("x"))
+                .locale_update(DeviceLocaleUpdate::new("x")),
+        )
         .await
         .unwrap();
     client
-        .device_remove(DeviceRemoveRequest::new())
-        .await
-        .unwrap();
-    client.device_list(DeviceListRequest::new()).await.unwrap();
-    client
-        .device_topic_list(DeviceTopicListRequest::new())
+        .device_remove(DeviceRemoveRequest::new().ids(["x"]).users(["x"]))
         .await
         .unwrap();
     client
-        .device_topic_update(DeviceTopicUpdateRequest::new("x", "x"))
+        .device_list(
+            DeviceListRequest::new()
+                .filter(
+                    DeviceFilter::new()
+                        .ids(["x"])
+                        .users(["x"])
+                        .topics(["x"])
+                        .providers(["x"])
+                        .platforms(["x"]),
+                )
+                .include_total_count(true)
+                .include_meta(true)
+                .include_topics(true)
+                .include_webpush_keys(true)
+                .cursor("x")
+                .limit(1),
+        )
         .await
         .unwrap();
     client
-        .user_topic_list(UserTopicListRequest::new())
+        .device_topic_list(
+            DeviceTopicListRequest::new()
+                .filter(
+                    DeviceTopicFilter::new()
+                        .device_ids(["x"])
+                        .device_providers(["x"])
+                        .device_platforms(["x"])
+                        .device_users(["x"])
+                        .topics(["x"])
+                        .topic_prefix("x"),
+                )
+                .include_total_count(true)
+                .include_device(true)
+                .cursor("x")
+                .limit(1),
+        )
         .await
         .unwrap();
     client
-        .user_topic_update(UserTopicUpdateRequest::new("x", "x"))
+        .device_topic_update(
+            DeviceTopicUpdateRequest::new("x", "x")
+                .topics(["x"])
+                .user("x"),
+        )
         .await
         .unwrap();
     client
-        .send_push_notification(SendPushNotificationRequest::new(
-            PushRecipient::new(),
-            PushNotification::new(),
-        ))
+        .user_topic_list(
+            UserTopicListRequest::new()
+                .filter(
+                    UserTopicFilter::new()
+                        .users(["x"])
+                        .topics(["x"])
+                        .topic_prefix("x"),
+                )
+                .include_total_count(true)
+                .cursor("x")
+                .limit(1),
+        )
         .await
         .unwrap();
     client
-        .update_push_status(UpdatePushStatusRequest::new("x", "x", "x"))
+        .user_topic_update(UserTopicUpdateRequest::new("x", "x").topics(["x"]))
+        .await
+        .unwrap();
+    client
+        .send_push_notification(
+            SendPushNotificationRequest::new(
+                PushRecipient::new()
+                    .filter(
+                        DeviceFilter::new()
+                            .ids(["x"])
+                            .users(["x"])
+                            .topics(["x"])
+                            .providers(["x"])
+                            .platforms(["x"]),
+                    )
+                    .fcm_tokens(["x"])
+                    .fcm_topic("x")
+                    .fcm_condition("x")
+                    .hms_tokens(["x"])
+                    .hms_topic("x")
+                    .hms_condition("x")
+                    .apns_tokens(["x"])
+                    .webpush_tokens(["x"]),
+                PushNotification::new()
+                    .fcm(FcmPushNotification::new(raw("{}")))
+                    .hms(HmsPushNotification::new(raw("{}")))
+                    .apns(ApnsPushNotification::new(raw("{}")).headers([("k", "x")]))
+                    .webpush(WebPushPushNotification::new(raw("{}")).headers([("k", "x")]))
+                    .expire_at(1),
+            )
+            .uid("x")
+            .send_at(1)
+            .optimize_for_reliability(true)
+            .limit_strategy(
+                PushLimitStrategy::new()
+                    .rate_limit(
+                        PushRateLimitStrategy::new()
+                            .key("x")
+                            .policies([RateLimitPolicy::new(1, 1)])
+                            .drop_if_rate_limited(true),
+                    )
+                    .time_limit(PushTimeLimitStrategy::new("x", "x").no_tz_send_now(true)),
+            )
+            .analytics_uid("x")
+            .localizations([("k", PushLocalization::new().translations([("k", "x")]))])
+            .use_templating(true)
+            .use_meta(true),
+        )
+        .await
+        .unwrap();
+    client
+        .update_push_status(UpdatePushStatusRequest::new("x", "x", "x").msg_id("x"))
         .await
         .unwrap();
     client
@@ -165,25 +414,57 @@ async fn every_method_reaches_its_endpoint() {
         .await
         .unwrap();
     client
-        .map_publish(MapPublishRequest::new("x", "x"))
+        .map_publish(
+            MapPublishRequest::new("x", "x")
+                .data(raw("{}"))
+                .b64data("x")
+                .stream_data(raw("{}"))
+                .b64stream_data("x")
+                .tags([("k", "x")])
+                .idempotency_key("x")
+                .delta(true)
+                .version(1)
+                .version_epoch("x")
+                .score(1)
+                .key_mode("x"),
+        )
         .await
         .unwrap();
     client
-        .map_remove(MapRemoveRequest::new("x", "x"))
+        .map_remove(MapRemoveRequest::new("x", "x").idempotency_key("x"))
         .await
         .unwrap();
     client
-        .map_read_state(MapReadStateRequest::new("x"))
+        .map_read_state(
+            MapReadStateRequest::new("x")
+                .cursor("x")
+                .limit(1)
+                .key("x")
+                .asc(true)
+                .revision_offset(1)
+                .revision_epoch("x"),
+        )
         .await
         .unwrap();
     client
-        .map_read_stream(MapReadStreamRequest::new("x"))
+        .map_read_stream(
+            MapReadStreamRequest::new("x")
+                .since_offset(1)
+                .since_epoch("x")
+                .limit(1)
+                .reverse(true),
+        )
         .await
         .unwrap();
     client.map_stats(MapStatsRequest::new("x")).await.unwrap();
     client.map_clear(MapClearRequest::new("x")).await.unwrap();
     client
-        .shared_poll_publish(SharedPollPublishRequest::new("x", "x", 1))
+        .shared_poll_publish(
+            SharedPollPublishRequest::new("x", "x", 1)
+                .data(raw("{}"))
+                .b64data("x")
+                .epoch("x"),
+        )
         .await
         .unwrap();
     assert_eq!(paths(&fake), endpoints());
@@ -194,47 +475,304 @@ async fn every_method_has_a_batch_command() {
     let fake = Fake::centrifugo();
     let client = Client::new(fake.config()).unwrap();
     let mut batch = client.new_batch(BatchOptions::default());
-    let p0 = batch.publish(PublishRequest::new("x").data(raw("{}")));
-    let p1 = batch.broadcast(BroadcastRequest::new(["x"]).data(raw("{}")));
-    let p2 = batch.subscribe(SubscribeRequest::new("x"));
-    let p3 = batch.unsubscribe(UnsubscribeRequest::new("x"));
-    let p4 = batch.disconnect(DisconnectRequest::new());
+    let p0 = batch.publish(
+        PublishRequest::new("x")
+            .data(raw("{}"))
+            .b64data("x")
+            .skip_history(true)
+            .tags([("k", "x")])
+            .idempotency_key("x")
+            .delta(true)
+            .version(1)
+            .version_epoch("x"),
+    );
+    let p1 = batch.broadcast(
+        BroadcastRequest::new(["x"])
+            .data(raw("{}"))
+            .b64data("x")
+            .skip_history(true)
+            .tags([("k", "x")])
+            .idempotency_key("x")
+            .delta(true)
+            .version(1)
+            .version_epoch("x"),
+    );
+    let p2 = batch.subscribe(
+        SubscribeRequest::new("x")
+            .user("x")
+            .expire_at(1)
+            .info(raw("{}"))
+            .b64info("x")
+            .client("x")
+            .data(raw("{}"))
+            .b64data("x")
+            .recover_since(StreamPosition::new().offset(1).epoch("x"))
+            .r#override(
+                SubscribeOptionOverride::new()
+                    .presence(true)
+                    .join_leave(true)
+                    .force_recovery(true)
+                    .force_positioning(true)
+                    .force_push_join_leave(true),
+            )
+            .session("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            )
+            .all_users(true),
+    );
+    let p3 = batch.unsubscribe(
+        UnsubscribeRequest::new("x")
+            .user("x")
+            .client("x")
+            .session("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            )
+            .all_users(true),
+    );
+    let p4 = batch.disconnect(
+        DisconnectRequest::new()
+            .user("x")
+            .disconnect(Disconnect::new().code(1).reason("x"))
+            .client("x")
+            .whitelist(["x"])
+            .session("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            )
+            .all_users(true),
+    );
     let p5 = batch.presence(PresenceRequest::new("x"));
     let p6 = batch.presence_stats(PresenceStatsRequest::new("x"));
-    let p7 = batch.history(HistoryRequest::new("x"));
+    let p7 = batch.history(
+        HistoryRequest::new("x")
+            .limit(1)
+            .since(StreamPosition::new().offset(1).epoch("x"))
+            .reverse(true),
+    );
     let p8 = batch.history_remove(HistoryRemoveRequest::new("x"));
     let p9 = batch.info(InfoRequest::new());
-    let p10 = batch.refresh(RefreshRequest::new());
-    let p11 = batch.channels(ChannelsRequest::new());
-    let p12 = batch.connections(ConnectionsRequest::new());
-    let p13 = batch.update_user_status(UpdateUserStatusRequest::new(["x"]));
+    let p10 = batch.refresh(
+        RefreshRequest::new()
+            .user("x")
+            .client("x")
+            .expired(true)
+            .expire_at(1)
+            .info(raw("{}"))
+            .session("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            )
+            .all_users(true),
+    );
+    let p11 = batch.channels(ChannelsRequest::new().pattern("x"));
+    let p12 = batch.connections(
+        ConnectionsRequest::new()
+            .user("x")
+            .expression("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            ),
+    );
+    let p13 = batch.update_user_status(UpdateUserStatusRequest::new(["x"]).state("x"));
     let p14 = batch.get_user_status(GetUserStatusRequest::new(["x"]));
     let p15 = batch.delete_user_status(DeleteUserStatusRequest::new(["x"]));
-    let p16 = batch.block_user(BlockUserRequest::new("x"));
+    let p16 = batch.block_user(BlockUserRequest::new("x").expire_at(1));
     let p17 = batch.unblock_user(UnblockUserRequest::new("x"));
-    let p18 = batch.revoke_token(RevokeTokenRequest::new("x"));
-    let p19 = batch.invalidate_user_tokens(InvalidateUserTokensRequest::new("x"));
-    let p20 = batch.device_register(DeviceRegisterRequest::new("x", "x", "x"));
-    let p21 = batch.device_update(DeviceUpdateRequest::new());
-    let p22 = batch.device_remove(DeviceRemoveRequest::new());
-    let p23 = batch.device_list(DeviceListRequest::new());
-    let p24 = batch.device_topic_list(DeviceTopicListRequest::new());
-    let p25 = batch.device_topic_update(DeviceTopicUpdateRequest::new("x", "x"));
-    let p26 = batch.user_topic_list(UserTopicListRequest::new());
-    let p27 = batch.user_topic_update(UserTopicUpdateRequest::new("x", "x"));
-    let p28 = batch.send_push_notification(SendPushNotificationRequest::new(
-        PushRecipient::new(),
-        PushNotification::new(),
-    ));
-    let p29 = batch.update_push_status(UpdatePushStatusRequest::new("x", "x", "x"));
+    let p18 = batch.revoke_token(RevokeTokenRequest::new("x").expire_at(1));
+    let p19 = batch.invalidate_user_tokens(
+        InvalidateUserTokensRequest::new("x")
+            .expire_at(1)
+            .issued_before(1)
+            .channel("x"),
+    );
+    let p20 = batch.device_register(
+        DeviceRegisterRequest::new("x", "x", "x")
+            .id("x")
+            .user("x")
+            .meta([("k", "x")])
+            .topics(["x"])
+            .timezone("x")
+            .locale("x"),
+    );
+    let p21 = batch.device_update(
+        DeviceUpdateRequest::new()
+            .ids(["x"])
+            .users(["x"])
+            .user_update(DeviceUserUpdate::new("x"))
+            .meta_update(DeviceMetaUpdate::new([("k", "x")]))
+            .topics_update(DeviceTopicsUpdate::new("x").topics(["x"]))
+            .timezone_update(DeviceTimezoneUpdate::new("x"))
+            .locale_update(DeviceLocaleUpdate::new("x")),
+    );
+    let p22 = batch.device_remove(DeviceRemoveRequest::new().ids(["x"]).users(["x"]));
+    let p23 = batch.device_list(
+        DeviceListRequest::new()
+            .filter(
+                DeviceFilter::new()
+                    .ids(["x"])
+                    .users(["x"])
+                    .topics(["x"])
+                    .providers(["x"])
+                    .platforms(["x"]),
+            )
+            .include_total_count(true)
+            .include_meta(true)
+            .include_topics(true)
+            .include_webpush_keys(true)
+            .cursor("x")
+            .limit(1),
+    );
+    let p24 = batch.device_topic_list(
+        DeviceTopicListRequest::new()
+            .filter(
+                DeviceTopicFilter::new()
+                    .device_ids(["x"])
+                    .device_providers(["x"])
+                    .device_platforms(["x"])
+                    .device_users(["x"])
+                    .topics(["x"])
+                    .topic_prefix("x"),
+            )
+            .include_total_count(true)
+            .include_device(true)
+            .cursor("x")
+            .limit(1),
+    );
+    let p25 = batch.device_topic_update(
+        DeviceTopicUpdateRequest::new("x", "x")
+            .topics(["x"])
+            .user("x"),
+    );
+    let p26 = batch.user_topic_list(
+        UserTopicListRequest::new()
+            .filter(
+                UserTopicFilter::new()
+                    .users(["x"])
+                    .topics(["x"])
+                    .topic_prefix("x"),
+            )
+            .include_total_count(true)
+            .cursor("x")
+            .limit(1),
+    );
+    let p27 = batch.user_topic_update(UserTopicUpdateRequest::new("x", "x").topics(["x"]));
+    let p28 = batch.send_push_notification(
+        SendPushNotificationRequest::new(
+            PushRecipient::new()
+                .filter(
+                    DeviceFilter::new()
+                        .ids(["x"])
+                        .users(["x"])
+                        .topics(["x"])
+                        .providers(["x"])
+                        .platforms(["x"]),
+                )
+                .fcm_tokens(["x"])
+                .fcm_topic("x")
+                .fcm_condition("x")
+                .hms_tokens(["x"])
+                .hms_topic("x")
+                .hms_condition("x")
+                .apns_tokens(["x"])
+                .webpush_tokens(["x"]),
+            PushNotification::new()
+                .fcm(FcmPushNotification::new(raw("{}")))
+                .hms(HmsPushNotification::new(raw("{}")))
+                .apns(ApnsPushNotification::new(raw("{}")).headers([("k", "x")]))
+                .webpush(WebPushPushNotification::new(raw("{}")).headers([("k", "x")]))
+                .expire_at(1),
+        )
+        .uid("x")
+        .send_at(1)
+        .optimize_for_reliability(true)
+        .limit_strategy(
+            PushLimitStrategy::new()
+                .rate_limit(
+                    PushRateLimitStrategy::new()
+                        .key("x")
+                        .policies([RateLimitPolicy::new(1, 1)])
+                        .drop_if_rate_limited(true),
+                )
+                .time_limit(PushTimeLimitStrategy::new("x", "x").no_tz_send_now(true)),
+        )
+        .analytics_uid("x")
+        .localizations([("k", PushLocalization::new().translations([("k", "x")]))])
+        .use_templating(true)
+        .use_meta(true),
+    );
+    let p29 = batch.update_push_status(UpdatePushStatusRequest::new("x", "x", "x").msg_id("x"));
     let p30 = batch.cancel_push(CancelPushRequest::new("x"));
-    let p31 = batch.map_publish(MapPublishRequest::new("x", "x"));
-    let p32 = batch.map_remove(MapRemoveRequest::new("x", "x"));
-    let p33 = batch.map_read_state(MapReadStateRequest::new("x"));
-    let p34 = batch.map_read_stream(MapReadStreamRequest::new("x"));
+    let p31 = batch.map_publish(
+        MapPublishRequest::new("x", "x")
+            .data(raw("{}"))
+            .b64data("x")
+            .stream_data(raw("{}"))
+            .b64stream_data("x")
+            .tags([("k", "x")])
+            .idempotency_key("x")
+            .delta(true)
+            .version(1)
+            .version_epoch("x")
+            .score(1)
+            .key_mode("x"),
+    );
+    let p32 = batch.map_remove(MapRemoveRequest::new("x", "x").idempotency_key("x"));
+    let p33 = batch.map_read_state(
+        MapReadStateRequest::new("x")
+            .cursor("x")
+            .limit(1)
+            .key("x")
+            .asc(true)
+            .revision_offset(1)
+            .revision_epoch("x"),
+    );
+    let p34 = batch.map_read_stream(
+        MapReadStreamRequest::new("x")
+            .since_offset(1)
+            .since_epoch("x")
+            .limit(1)
+            .reverse(true),
+    );
     let p35 = batch.map_stats(MapStatsRequest::new("x"));
     let p36 = batch.map_clear(MapClearRequest::new("x"));
-    let p37 = batch.shared_poll_publish(SharedPollPublishRequest::new("x", "x", 1));
+    let p37 = batch.shared_poll_publish(
+        SharedPollPublishRequest::new("x", "x", 1)
+            .data(raw("{}"))
+            .b64data("x")
+            .epoch("x"),
+    );
     batch.send().await.unwrap();
     p0.result().unwrap();
     p1.result().unwrap();
@@ -287,38 +825,161 @@ async fn every_method_has_a_batch_command() {
 #[test]
 fn every_method_has_a_command() {
     let methods = [
-        Command::publish(PublishRequest::new("x").data(raw("{}")))
-            .unwrap()
-            .method(),
-        Command::broadcast(BroadcastRequest::new(["x"]).data(raw("{}")))
-            .unwrap()
-            .method(),
-        Command::subscribe(SubscribeRequest::new("x"))
-            .unwrap()
-            .method(),
-        Command::unsubscribe(UnsubscribeRequest::new("x"))
-            .unwrap()
-            .method(),
-        Command::disconnect(DisconnectRequest::new())
-            .unwrap()
-            .method(),
+        Command::publish(
+            PublishRequest::new("x")
+                .data(raw("{}"))
+                .b64data("x")
+                .skip_history(true)
+                .tags([("k", "x")])
+                .idempotency_key("x")
+                .delta(true)
+                .version(1)
+                .version_epoch("x"),
+        )
+        .unwrap()
+        .method(),
+        Command::broadcast(
+            BroadcastRequest::new(["x"])
+                .data(raw("{}"))
+                .b64data("x")
+                .skip_history(true)
+                .tags([("k", "x")])
+                .idempotency_key("x")
+                .delta(true)
+                .version(1)
+                .version_epoch("x"),
+        )
+        .unwrap()
+        .method(),
+        Command::subscribe(
+            SubscribeRequest::new("x")
+                .user("x")
+                .expire_at(1)
+                .info(raw("{}"))
+                .b64info("x")
+                .client("x")
+                .data(raw("{}"))
+                .b64data("x")
+                .recover_since(StreamPosition::new().offset(1).epoch("x"))
+                .r#override(
+                    SubscribeOptionOverride::new()
+                        .presence(true)
+                        .join_leave(true)
+                        .force_recovery(true)
+                        .force_positioning(true)
+                        .force_push_join_leave(true),
+                )
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .unwrap()
+        .method(),
+        Command::unsubscribe(
+            UnsubscribeRequest::new("x")
+                .user("x")
+                .client("x")
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .unwrap()
+        .method(),
+        Command::disconnect(
+            DisconnectRequest::new()
+                .user("x")
+                .disconnect(Disconnect::new().code(1).reason("x"))
+                .client("x")
+                .whitelist(["x"])
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .unwrap()
+        .method(),
         Command::presence(PresenceRequest::new("x"))
             .unwrap()
             .method(),
         Command::presence_stats(PresenceStatsRequest::new("x"))
             .unwrap()
             .method(),
-        Command::history(HistoryRequest::new("x")).unwrap().method(),
+        Command::history(
+            HistoryRequest::new("x")
+                .limit(1)
+                .since(StreamPosition::new().offset(1).epoch("x"))
+                .reverse(true),
+        )
+        .unwrap()
+        .method(),
         Command::history_remove(HistoryRemoveRequest::new("x"))
             .unwrap()
             .method(),
         Command::info(InfoRequest::new()).unwrap().method(),
-        Command::refresh(RefreshRequest::new()).unwrap().method(),
-        Command::channels(ChannelsRequest::new()).unwrap().method(),
-        Command::connections(ConnectionsRequest::new())
+        Command::refresh(
+            RefreshRequest::new()
+                .user("x")
+                .client("x")
+                .expired(true)
+                .expire_at(1)
+                .info(raw("{}"))
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .unwrap()
+        .method(),
+        Command::channels(ChannelsRequest::new().pattern("x"))
             .unwrap()
             .method(),
-        Command::update_user_status(UpdateUserStatusRequest::new(["x"]))
+        Command::connections(
+            ConnectionsRequest::new()
+                .user("x")
+                .expression("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                ),
+        )
+        .unwrap()
+        .method(),
+        Command::update_user_status(UpdateUserStatusRequest::new(["x"]).state("x"))
             .unwrap()
             .method(),
         Command::get_user_status(GetUserStatusRequest::new(["x"]))
@@ -327,75 +988,215 @@ fn every_method_has_a_command() {
         Command::delete_user_status(DeleteUserStatusRequest::new(["x"]))
             .unwrap()
             .method(),
-        Command::block_user(BlockUserRequest::new("x"))
+        Command::block_user(BlockUserRequest::new("x").expire_at(1))
             .unwrap()
             .method(),
         Command::unblock_user(UnblockUserRequest::new("x"))
             .unwrap()
             .method(),
-        Command::revoke_token(RevokeTokenRequest::new("x"))
+        Command::revoke_token(RevokeTokenRequest::new("x").expire_at(1))
             .unwrap()
             .method(),
-        Command::invalidate_user_tokens(InvalidateUserTokensRequest::new("x"))
-            .unwrap()
-            .method(),
-        Command::device_register(DeviceRegisterRequest::new("x", "x", "x"))
-            .unwrap()
-            .method(),
-        Command::device_update(DeviceUpdateRequest::new())
-            .unwrap()
-            .method(),
-        Command::device_remove(DeviceRemoveRequest::new())
-            .unwrap()
-            .method(),
-        Command::device_list(DeviceListRequest::new())
-            .unwrap()
-            .method(),
-        Command::device_topic_list(DeviceTopicListRequest::new())
-            .unwrap()
-            .method(),
-        Command::device_topic_update(DeviceTopicUpdateRequest::new("x", "x"))
-            .unwrap()
-            .method(),
-        Command::user_topic_list(UserTopicListRequest::new())
-            .unwrap()
-            .method(),
-        Command::user_topic_update(UserTopicUpdateRequest::new("x", "x"))
-            .unwrap()
-            .method(),
-        Command::send_push_notification(SendPushNotificationRequest::new(
-            PushRecipient::new(),
-            PushNotification::new(),
-        ))
+        Command::invalidate_user_tokens(
+            InvalidateUserTokensRequest::new("x")
+                .expire_at(1)
+                .issued_before(1)
+                .channel("x"),
+        )
         .unwrap()
         .method(),
-        Command::update_push_status(UpdatePushStatusRequest::new("x", "x", "x"))
+        Command::device_register(
+            DeviceRegisterRequest::new("x", "x", "x")
+                .id("x")
+                .user("x")
+                .meta([("k", "x")])
+                .topics(["x"])
+                .timezone("x")
+                .locale("x"),
+        )
+        .unwrap()
+        .method(),
+        Command::device_update(
+            DeviceUpdateRequest::new()
+                .ids(["x"])
+                .users(["x"])
+                .user_update(DeviceUserUpdate::new("x"))
+                .meta_update(DeviceMetaUpdate::new([("k", "x")]))
+                .topics_update(DeviceTopicsUpdate::new("x").topics(["x"]))
+                .timezone_update(DeviceTimezoneUpdate::new("x"))
+                .locale_update(DeviceLocaleUpdate::new("x")),
+        )
+        .unwrap()
+        .method(),
+        Command::device_remove(DeviceRemoveRequest::new().ids(["x"]).users(["x"]))
+            .unwrap()
+            .method(),
+        Command::device_list(
+            DeviceListRequest::new()
+                .filter(
+                    DeviceFilter::new()
+                        .ids(["x"])
+                        .users(["x"])
+                        .topics(["x"])
+                        .providers(["x"])
+                        .platforms(["x"]),
+                )
+                .include_total_count(true)
+                .include_meta(true)
+                .include_topics(true)
+                .include_webpush_keys(true)
+                .cursor("x")
+                .limit(1),
+        )
+        .unwrap()
+        .method(),
+        Command::device_topic_list(
+            DeviceTopicListRequest::new()
+                .filter(
+                    DeviceTopicFilter::new()
+                        .device_ids(["x"])
+                        .device_providers(["x"])
+                        .device_platforms(["x"])
+                        .device_users(["x"])
+                        .topics(["x"])
+                        .topic_prefix("x"),
+                )
+                .include_total_count(true)
+                .include_device(true)
+                .cursor("x")
+                .limit(1),
+        )
+        .unwrap()
+        .method(),
+        Command::device_topic_update(
+            DeviceTopicUpdateRequest::new("x", "x")
+                .topics(["x"])
+                .user("x"),
+        )
+        .unwrap()
+        .method(),
+        Command::user_topic_list(
+            UserTopicListRequest::new()
+                .filter(
+                    UserTopicFilter::new()
+                        .users(["x"])
+                        .topics(["x"])
+                        .topic_prefix("x"),
+                )
+                .include_total_count(true)
+                .cursor("x")
+                .limit(1),
+        )
+        .unwrap()
+        .method(),
+        Command::user_topic_update(UserTopicUpdateRequest::new("x", "x").topics(["x"]))
+            .unwrap()
+            .method(),
+        Command::send_push_notification(
+            SendPushNotificationRequest::new(
+                PushRecipient::new()
+                    .filter(
+                        DeviceFilter::new()
+                            .ids(["x"])
+                            .users(["x"])
+                            .topics(["x"])
+                            .providers(["x"])
+                            .platforms(["x"]),
+                    )
+                    .fcm_tokens(["x"])
+                    .fcm_topic("x")
+                    .fcm_condition("x")
+                    .hms_tokens(["x"])
+                    .hms_topic("x")
+                    .hms_condition("x")
+                    .apns_tokens(["x"])
+                    .webpush_tokens(["x"]),
+                PushNotification::new()
+                    .fcm(FcmPushNotification::new(raw("{}")))
+                    .hms(HmsPushNotification::new(raw("{}")))
+                    .apns(ApnsPushNotification::new(raw("{}")).headers([("k", "x")]))
+                    .webpush(WebPushPushNotification::new(raw("{}")).headers([("k", "x")]))
+                    .expire_at(1),
+            )
+            .uid("x")
+            .send_at(1)
+            .optimize_for_reliability(true)
+            .limit_strategy(
+                PushLimitStrategy::new()
+                    .rate_limit(
+                        PushRateLimitStrategy::new()
+                            .key("x")
+                            .policies([RateLimitPolicy::new(1, 1)])
+                            .drop_if_rate_limited(true),
+                    )
+                    .time_limit(PushTimeLimitStrategy::new("x", "x").no_tz_send_now(true)),
+            )
+            .analytics_uid("x")
+            .localizations([("k", PushLocalization::new().translations([("k", "x")]))])
+            .use_templating(true)
+            .use_meta(true),
+        )
+        .unwrap()
+        .method(),
+        Command::update_push_status(UpdatePushStatusRequest::new("x", "x", "x").msg_id("x"))
             .unwrap()
             .method(),
         Command::cancel_push(CancelPushRequest::new("x"))
             .unwrap()
             .method(),
-        Command::map_publish(MapPublishRequest::new("x", "x"))
+        Command::map_publish(
+            MapPublishRequest::new("x", "x")
+                .data(raw("{}"))
+                .b64data("x")
+                .stream_data(raw("{}"))
+                .b64stream_data("x")
+                .tags([("k", "x")])
+                .idempotency_key("x")
+                .delta(true)
+                .version(1)
+                .version_epoch("x")
+                .score(1)
+                .key_mode("x"),
+        )
+        .unwrap()
+        .method(),
+        Command::map_remove(MapRemoveRequest::new("x", "x").idempotency_key("x"))
             .unwrap()
             .method(),
-        Command::map_remove(MapRemoveRequest::new("x", "x"))
-            .unwrap()
-            .method(),
-        Command::map_read_state(MapReadStateRequest::new("x"))
-            .unwrap()
-            .method(),
-        Command::map_read_stream(MapReadStreamRequest::new("x"))
-            .unwrap()
-            .method(),
+        Command::map_read_state(
+            MapReadStateRequest::new("x")
+                .cursor("x")
+                .limit(1)
+                .key("x")
+                .asc(true)
+                .revision_offset(1)
+                .revision_epoch("x"),
+        )
+        .unwrap()
+        .method(),
+        Command::map_read_stream(
+            MapReadStreamRequest::new("x")
+                .since_offset(1)
+                .since_epoch("x")
+                .limit(1)
+                .reverse(true),
+        )
+        .unwrap()
+        .method(),
         Command::map_stats(MapStatsRequest::new("x"))
             .unwrap()
             .method(),
         Command::map_clear(MapClearRequest::new("x"))
             .unwrap()
             .method(),
-        Command::shared_poll_publish(SharedPollPublishRequest::new("x", "x", 1))
-            .unwrap()
-            .method(),
+        Command::shared_poll_publish(
+            SharedPollPublishRequest::new("x", "x", 1)
+                .data(raw("{}"))
+                .b64data("x")
+                .epoch("x"),
+        )
+        .unwrap()
+        .method(),
     ];
     assert_eq!(methods, METHODS);
 }
@@ -406,28 +1207,159 @@ fn every_method_on_the_blocking_client() {
     let fake = Fake::centrifugo();
     let client = blocking::Client::new(fake.config()).unwrap();
     client
-        .publish(PublishRequest::new("x").data(raw("{}")))
+        .publish(
+            PublishRequest::new("x")
+                .data(raw("{}"))
+                .b64data("x")
+                .skip_history(true)
+                .tags([("k", "x")])
+                .idempotency_key("x")
+                .delta(true)
+                .version(1)
+                .version_epoch("x"),
+        )
         .unwrap();
     client
-        .broadcast(BroadcastRequest::new(["x"]).data(raw("{}")))
+        .broadcast(
+            BroadcastRequest::new(["x"])
+                .data(raw("{}"))
+                .b64data("x")
+                .skip_history(true)
+                .tags([("k", "x")])
+                .idempotency_key("x")
+                .delta(true)
+                .version(1)
+                .version_epoch("x"),
+        )
         .unwrap();
-    client.subscribe(SubscribeRequest::new("x")).unwrap();
-    client.unsubscribe(UnsubscribeRequest::new("x")).unwrap();
-    client.disconnect(DisconnectRequest::new()).unwrap();
+    client
+        .subscribe(
+            SubscribeRequest::new("x")
+                .user("x")
+                .expire_at(1)
+                .info(raw("{}"))
+                .b64info("x")
+                .client("x")
+                .data(raw("{}"))
+                .b64data("x")
+                .recover_since(StreamPosition::new().offset(1).epoch("x"))
+                .r#override(
+                    SubscribeOptionOverride::new()
+                        .presence(true)
+                        .join_leave(true)
+                        .force_recovery(true)
+                        .force_positioning(true)
+                        .force_push_join_leave(true),
+                )
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .unwrap();
+    client
+        .unsubscribe(
+            UnsubscribeRequest::new("x")
+                .user("x")
+                .client("x")
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .unwrap();
+    client
+        .disconnect(
+            DisconnectRequest::new()
+                .user("x")
+                .disconnect(Disconnect::new().code(1).reason("x"))
+                .client("x")
+                .whitelist(["x"])
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .unwrap();
     client.presence(PresenceRequest::new("x")).unwrap();
     client
         .presence_stats(PresenceStatsRequest::new("x"))
         .unwrap();
-    client.history(HistoryRequest::new("x")).unwrap();
+    client
+        .history(
+            HistoryRequest::new("x")
+                .limit(1)
+                .since(StreamPosition::new().offset(1).epoch("x"))
+                .reverse(true),
+        )
+        .unwrap();
     client
         .history_remove(HistoryRemoveRequest::new("x"))
         .unwrap();
     client.info(InfoRequest::new()).unwrap();
-    client.refresh(RefreshRequest::new()).unwrap();
-    client.channels(ChannelsRequest::new()).unwrap();
-    client.connections(ConnectionsRequest::new()).unwrap();
     client
-        .update_user_status(UpdateUserStatusRequest::new(["x"]))
+        .refresh(
+            RefreshRequest::new()
+                .user("x")
+                .client("x")
+                .expired(true)
+                .expire_at(1)
+                .info(raw("{}"))
+                .session("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                )
+                .all_users(true),
+        )
+        .unwrap();
+    client
+        .channels(ChannelsRequest::new().pattern("x"))
+        .unwrap();
+    client
+        .connections(
+            ConnectionsRequest::new()
+                .user("x")
+                .expression("x")
+                .label_filter(
+                    FilterNode::new()
+                        .op("x")
+                        .key("x")
+                        .cmp("x")
+                        .val("x")
+                        .vals(["x"])
+                        .nodes([FilterNode::new()]),
+                ),
+        )
+        .unwrap();
+    client
+        .update_user_status(UpdateUserStatusRequest::new(["x"]).state("x"))
         .unwrap();
     client
         .get_user_status(GetUserStatusRequest::new(["x"]))
@@ -435,95 +1367,506 @@ fn every_method_on_the_blocking_client() {
     client
         .delete_user_status(DeleteUserStatusRequest::new(["x"]))
         .unwrap();
-    client.block_user(BlockUserRequest::new("x")).unwrap();
+    client
+        .block_user(BlockUserRequest::new("x").expire_at(1))
+        .unwrap();
     client.unblock_user(UnblockUserRequest::new("x")).unwrap();
-    client.revoke_token(RevokeTokenRequest::new("x")).unwrap();
     client
-        .invalidate_user_tokens(InvalidateUserTokensRequest::new("x"))
+        .revoke_token(RevokeTokenRequest::new("x").expire_at(1))
         .unwrap();
     client
-        .device_register(DeviceRegisterRequest::new("x", "x", "x"))
-        .unwrap();
-    client.device_update(DeviceUpdateRequest::new()).unwrap();
-    client.device_remove(DeviceRemoveRequest::new()).unwrap();
-    client.device_list(DeviceListRequest::new()).unwrap();
-    client
-        .device_topic_list(DeviceTopicListRequest::new())
-        .unwrap();
-    client
-        .device_topic_update(DeviceTopicUpdateRequest::new("x", "x"))
-        .unwrap();
-    client.user_topic_list(UserTopicListRequest::new()).unwrap();
-    client
-        .user_topic_update(UserTopicUpdateRequest::new("x", "x"))
+        .invalidate_user_tokens(
+            InvalidateUserTokensRequest::new("x")
+                .expire_at(1)
+                .issued_before(1)
+                .channel("x"),
+        )
         .unwrap();
     client
-        .send_push_notification(SendPushNotificationRequest::new(
-            PushRecipient::new(),
-            PushNotification::new(),
-        ))
+        .device_register(
+            DeviceRegisterRequest::new("x", "x", "x")
+                .id("x")
+                .user("x")
+                .meta([("k", "x")])
+                .topics(["x"])
+                .timezone("x")
+                .locale("x"),
+        )
         .unwrap();
     client
-        .update_push_status(UpdatePushStatusRequest::new("x", "x", "x"))
+        .device_update(
+            DeviceUpdateRequest::new()
+                .ids(["x"])
+                .users(["x"])
+                .user_update(DeviceUserUpdate::new("x"))
+                .meta_update(DeviceMetaUpdate::new([("k", "x")]))
+                .topics_update(DeviceTopicsUpdate::new("x").topics(["x"]))
+                .timezone_update(DeviceTimezoneUpdate::new("x"))
+                .locale_update(DeviceLocaleUpdate::new("x")),
+        )
+        .unwrap();
+    client
+        .device_remove(DeviceRemoveRequest::new().ids(["x"]).users(["x"]))
+        .unwrap();
+    client
+        .device_list(
+            DeviceListRequest::new()
+                .filter(
+                    DeviceFilter::new()
+                        .ids(["x"])
+                        .users(["x"])
+                        .topics(["x"])
+                        .providers(["x"])
+                        .platforms(["x"]),
+                )
+                .include_total_count(true)
+                .include_meta(true)
+                .include_topics(true)
+                .include_webpush_keys(true)
+                .cursor("x")
+                .limit(1),
+        )
+        .unwrap();
+    client
+        .device_topic_list(
+            DeviceTopicListRequest::new()
+                .filter(
+                    DeviceTopicFilter::new()
+                        .device_ids(["x"])
+                        .device_providers(["x"])
+                        .device_platforms(["x"])
+                        .device_users(["x"])
+                        .topics(["x"])
+                        .topic_prefix("x"),
+                )
+                .include_total_count(true)
+                .include_device(true)
+                .cursor("x")
+                .limit(1),
+        )
+        .unwrap();
+    client
+        .device_topic_update(
+            DeviceTopicUpdateRequest::new("x", "x")
+                .topics(["x"])
+                .user("x"),
+        )
+        .unwrap();
+    client
+        .user_topic_list(
+            UserTopicListRequest::new()
+                .filter(
+                    UserTopicFilter::new()
+                        .users(["x"])
+                        .topics(["x"])
+                        .topic_prefix("x"),
+                )
+                .include_total_count(true)
+                .cursor("x")
+                .limit(1),
+        )
+        .unwrap();
+    client
+        .user_topic_update(UserTopicUpdateRequest::new("x", "x").topics(["x"]))
+        .unwrap();
+    client
+        .send_push_notification(
+            SendPushNotificationRequest::new(
+                PushRecipient::new()
+                    .filter(
+                        DeviceFilter::new()
+                            .ids(["x"])
+                            .users(["x"])
+                            .topics(["x"])
+                            .providers(["x"])
+                            .platforms(["x"]),
+                    )
+                    .fcm_tokens(["x"])
+                    .fcm_topic("x")
+                    .fcm_condition("x")
+                    .hms_tokens(["x"])
+                    .hms_topic("x")
+                    .hms_condition("x")
+                    .apns_tokens(["x"])
+                    .webpush_tokens(["x"]),
+                PushNotification::new()
+                    .fcm(FcmPushNotification::new(raw("{}")))
+                    .hms(HmsPushNotification::new(raw("{}")))
+                    .apns(ApnsPushNotification::new(raw("{}")).headers([("k", "x")]))
+                    .webpush(WebPushPushNotification::new(raw("{}")).headers([("k", "x")]))
+                    .expire_at(1),
+            )
+            .uid("x")
+            .send_at(1)
+            .optimize_for_reliability(true)
+            .limit_strategy(
+                PushLimitStrategy::new()
+                    .rate_limit(
+                        PushRateLimitStrategy::new()
+                            .key("x")
+                            .policies([RateLimitPolicy::new(1, 1)])
+                            .drop_if_rate_limited(true),
+                    )
+                    .time_limit(PushTimeLimitStrategy::new("x", "x").no_tz_send_now(true)),
+            )
+            .analytics_uid("x")
+            .localizations([("k", PushLocalization::new().translations([("k", "x")]))])
+            .use_templating(true)
+            .use_meta(true),
+        )
+        .unwrap();
+    client
+        .update_push_status(UpdatePushStatusRequest::new("x", "x", "x").msg_id("x"))
         .unwrap();
     client.cancel_push(CancelPushRequest::new("x")).unwrap();
     client
-        .map_publish(MapPublishRequest::new("x", "x"))
+        .map_publish(
+            MapPublishRequest::new("x", "x")
+                .data(raw("{}"))
+                .b64data("x")
+                .stream_data(raw("{}"))
+                .b64stream_data("x")
+                .tags([("k", "x")])
+                .idempotency_key("x")
+                .delta(true)
+                .version(1)
+                .version_epoch("x")
+                .score(1)
+                .key_mode("x"),
+        )
         .unwrap();
-    client.map_remove(MapRemoveRequest::new("x", "x")).unwrap();
     client
-        .map_read_state(MapReadStateRequest::new("x"))
+        .map_remove(MapRemoveRequest::new("x", "x").idempotency_key("x"))
         .unwrap();
     client
-        .map_read_stream(MapReadStreamRequest::new("x"))
+        .map_read_state(
+            MapReadStateRequest::new("x")
+                .cursor("x")
+                .limit(1)
+                .key("x")
+                .asc(true)
+                .revision_offset(1)
+                .revision_epoch("x"),
+        )
+        .unwrap();
+    client
+        .map_read_stream(
+            MapReadStreamRequest::new("x")
+                .since_offset(1)
+                .since_epoch("x")
+                .limit(1)
+                .reverse(true),
+        )
         .unwrap();
     client.map_stats(MapStatsRequest::new("x")).unwrap();
     client.map_clear(MapClearRequest::new("x")).unwrap();
     client
-        .shared_poll_publish(SharedPollPublishRequest::new("x", "x", 1))
+        .shared_poll_publish(
+            SharedPollPublishRequest::new("x", "x", 1)
+                .data(raw("{}"))
+                .b64data("x")
+                .epoch("x"),
+        )
         .unwrap();
     let mut batch = client.new_batch(BatchOptions::default());
-    let p0 = batch.publish(PublishRequest::new("x").data(raw("{}")));
-    let p1 = batch.broadcast(BroadcastRequest::new(["x"]).data(raw("{}")));
-    let p2 = batch.subscribe(SubscribeRequest::new("x"));
-    let p3 = batch.unsubscribe(UnsubscribeRequest::new("x"));
-    let p4 = batch.disconnect(DisconnectRequest::new());
+    let p0 = batch.publish(
+        PublishRequest::new("x")
+            .data(raw("{}"))
+            .b64data("x")
+            .skip_history(true)
+            .tags([("k", "x")])
+            .idempotency_key("x")
+            .delta(true)
+            .version(1)
+            .version_epoch("x"),
+    );
+    let p1 = batch.broadcast(
+        BroadcastRequest::new(["x"])
+            .data(raw("{}"))
+            .b64data("x")
+            .skip_history(true)
+            .tags([("k", "x")])
+            .idempotency_key("x")
+            .delta(true)
+            .version(1)
+            .version_epoch("x"),
+    );
+    let p2 = batch.subscribe(
+        SubscribeRequest::new("x")
+            .user("x")
+            .expire_at(1)
+            .info(raw("{}"))
+            .b64info("x")
+            .client("x")
+            .data(raw("{}"))
+            .b64data("x")
+            .recover_since(StreamPosition::new().offset(1).epoch("x"))
+            .r#override(
+                SubscribeOptionOverride::new()
+                    .presence(true)
+                    .join_leave(true)
+                    .force_recovery(true)
+                    .force_positioning(true)
+                    .force_push_join_leave(true),
+            )
+            .session("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            )
+            .all_users(true),
+    );
+    let p3 = batch.unsubscribe(
+        UnsubscribeRequest::new("x")
+            .user("x")
+            .client("x")
+            .session("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            )
+            .all_users(true),
+    );
+    let p4 = batch.disconnect(
+        DisconnectRequest::new()
+            .user("x")
+            .disconnect(Disconnect::new().code(1).reason("x"))
+            .client("x")
+            .whitelist(["x"])
+            .session("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            )
+            .all_users(true),
+    );
     let p5 = batch.presence(PresenceRequest::new("x"));
     let p6 = batch.presence_stats(PresenceStatsRequest::new("x"));
-    let p7 = batch.history(HistoryRequest::new("x"));
+    let p7 = batch.history(
+        HistoryRequest::new("x")
+            .limit(1)
+            .since(StreamPosition::new().offset(1).epoch("x"))
+            .reverse(true),
+    );
     let p8 = batch.history_remove(HistoryRemoveRequest::new("x"));
     let p9 = batch.info(InfoRequest::new());
-    let p10 = batch.refresh(RefreshRequest::new());
-    let p11 = batch.channels(ChannelsRequest::new());
-    let p12 = batch.connections(ConnectionsRequest::new());
-    let p13 = batch.update_user_status(UpdateUserStatusRequest::new(["x"]));
+    let p10 = batch.refresh(
+        RefreshRequest::new()
+            .user("x")
+            .client("x")
+            .expired(true)
+            .expire_at(1)
+            .info(raw("{}"))
+            .session("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            )
+            .all_users(true),
+    );
+    let p11 = batch.channels(ChannelsRequest::new().pattern("x"));
+    let p12 = batch.connections(
+        ConnectionsRequest::new()
+            .user("x")
+            .expression("x")
+            .label_filter(
+                FilterNode::new()
+                    .op("x")
+                    .key("x")
+                    .cmp("x")
+                    .val("x")
+                    .vals(["x"])
+                    .nodes([FilterNode::new()]),
+            ),
+    );
+    let p13 = batch.update_user_status(UpdateUserStatusRequest::new(["x"]).state("x"));
     let p14 = batch.get_user_status(GetUserStatusRequest::new(["x"]));
     let p15 = batch.delete_user_status(DeleteUserStatusRequest::new(["x"]));
-    let p16 = batch.block_user(BlockUserRequest::new("x"));
+    let p16 = batch.block_user(BlockUserRequest::new("x").expire_at(1));
     let p17 = batch.unblock_user(UnblockUserRequest::new("x"));
-    let p18 = batch.revoke_token(RevokeTokenRequest::new("x"));
-    let p19 = batch.invalidate_user_tokens(InvalidateUserTokensRequest::new("x"));
-    let p20 = batch.device_register(DeviceRegisterRequest::new("x", "x", "x"));
-    let p21 = batch.device_update(DeviceUpdateRequest::new());
-    let p22 = batch.device_remove(DeviceRemoveRequest::new());
-    let p23 = batch.device_list(DeviceListRequest::new());
-    let p24 = batch.device_topic_list(DeviceTopicListRequest::new());
-    let p25 = batch.device_topic_update(DeviceTopicUpdateRequest::new("x", "x"));
-    let p26 = batch.user_topic_list(UserTopicListRequest::new());
-    let p27 = batch.user_topic_update(UserTopicUpdateRequest::new("x", "x"));
-    let p28 = batch.send_push_notification(SendPushNotificationRequest::new(
-        PushRecipient::new(),
-        PushNotification::new(),
-    ));
-    let p29 = batch.update_push_status(UpdatePushStatusRequest::new("x", "x", "x"));
+    let p18 = batch.revoke_token(RevokeTokenRequest::new("x").expire_at(1));
+    let p19 = batch.invalidate_user_tokens(
+        InvalidateUserTokensRequest::new("x")
+            .expire_at(1)
+            .issued_before(1)
+            .channel("x"),
+    );
+    let p20 = batch.device_register(
+        DeviceRegisterRequest::new("x", "x", "x")
+            .id("x")
+            .user("x")
+            .meta([("k", "x")])
+            .topics(["x"])
+            .timezone("x")
+            .locale("x"),
+    );
+    let p21 = batch.device_update(
+        DeviceUpdateRequest::new()
+            .ids(["x"])
+            .users(["x"])
+            .user_update(DeviceUserUpdate::new("x"))
+            .meta_update(DeviceMetaUpdate::new([("k", "x")]))
+            .topics_update(DeviceTopicsUpdate::new("x").topics(["x"]))
+            .timezone_update(DeviceTimezoneUpdate::new("x"))
+            .locale_update(DeviceLocaleUpdate::new("x")),
+    );
+    let p22 = batch.device_remove(DeviceRemoveRequest::new().ids(["x"]).users(["x"]));
+    let p23 = batch.device_list(
+        DeviceListRequest::new()
+            .filter(
+                DeviceFilter::new()
+                    .ids(["x"])
+                    .users(["x"])
+                    .topics(["x"])
+                    .providers(["x"])
+                    .platforms(["x"]),
+            )
+            .include_total_count(true)
+            .include_meta(true)
+            .include_topics(true)
+            .include_webpush_keys(true)
+            .cursor("x")
+            .limit(1),
+    );
+    let p24 = batch.device_topic_list(
+        DeviceTopicListRequest::new()
+            .filter(
+                DeviceTopicFilter::new()
+                    .device_ids(["x"])
+                    .device_providers(["x"])
+                    .device_platforms(["x"])
+                    .device_users(["x"])
+                    .topics(["x"])
+                    .topic_prefix("x"),
+            )
+            .include_total_count(true)
+            .include_device(true)
+            .cursor("x")
+            .limit(1),
+    );
+    let p25 = batch.device_topic_update(
+        DeviceTopicUpdateRequest::new("x", "x")
+            .topics(["x"])
+            .user("x"),
+    );
+    let p26 = batch.user_topic_list(
+        UserTopicListRequest::new()
+            .filter(
+                UserTopicFilter::new()
+                    .users(["x"])
+                    .topics(["x"])
+                    .topic_prefix("x"),
+            )
+            .include_total_count(true)
+            .cursor("x")
+            .limit(1),
+    );
+    let p27 = batch.user_topic_update(UserTopicUpdateRequest::new("x", "x").topics(["x"]));
+    let p28 = batch.send_push_notification(
+        SendPushNotificationRequest::new(
+            PushRecipient::new()
+                .filter(
+                    DeviceFilter::new()
+                        .ids(["x"])
+                        .users(["x"])
+                        .topics(["x"])
+                        .providers(["x"])
+                        .platforms(["x"]),
+                )
+                .fcm_tokens(["x"])
+                .fcm_topic("x")
+                .fcm_condition("x")
+                .hms_tokens(["x"])
+                .hms_topic("x")
+                .hms_condition("x")
+                .apns_tokens(["x"])
+                .webpush_tokens(["x"]),
+            PushNotification::new()
+                .fcm(FcmPushNotification::new(raw("{}")))
+                .hms(HmsPushNotification::new(raw("{}")))
+                .apns(ApnsPushNotification::new(raw("{}")).headers([("k", "x")]))
+                .webpush(WebPushPushNotification::new(raw("{}")).headers([("k", "x")]))
+                .expire_at(1),
+        )
+        .uid("x")
+        .send_at(1)
+        .optimize_for_reliability(true)
+        .limit_strategy(
+            PushLimitStrategy::new()
+                .rate_limit(
+                    PushRateLimitStrategy::new()
+                        .key("x")
+                        .policies([RateLimitPolicy::new(1, 1)])
+                        .drop_if_rate_limited(true),
+                )
+                .time_limit(PushTimeLimitStrategy::new("x", "x").no_tz_send_now(true)),
+        )
+        .analytics_uid("x")
+        .localizations([("k", PushLocalization::new().translations([("k", "x")]))])
+        .use_templating(true)
+        .use_meta(true),
+    );
+    let p29 = batch.update_push_status(UpdatePushStatusRequest::new("x", "x", "x").msg_id("x"));
     let p30 = batch.cancel_push(CancelPushRequest::new("x"));
-    let p31 = batch.map_publish(MapPublishRequest::new("x", "x"));
-    let p32 = batch.map_remove(MapRemoveRequest::new("x", "x"));
-    let p33 = batch.map_read_state(MapReadStateRequest::new("x"));
-    let p34 = batch.map_read_stream(MapReadStreamRequest::new("x"));
+    let p31 = batch.map_publish(
+        MapPublishRequest::new("x", "x")
+            .data(raw("{}"))
+            .b64data("x")
+            .stream_data(raw("{}"))
+            .b64stream_data("x")
+            .tags([("k", "x")])
+            .idempotency_key("x")
+            .delta(true)
+            .version(1)
+            .version_epoch("x")
+            .score(1)
+            .key_mode("x"),
+    );
+    let p32 = batch.map_remove(MapRemoveRequest::new("x", "x").idempotency_key("x"));
+    let p33 = batch.map_read_state(
+        MapReadStateRequest::new("x")
+            .cursor("x")
+            .limit(1)
+            .key("x")
+            .asc(true)
+            .revision_offset(1)
+            .revision_epoch("x"),
+    );
+    let p34 = batch.map_read_stream(
+        MapReadStreamRequest::new("x")
+            .since_offset(1)
+            .since_epoch("x")
+            .limit(1)
+            .reverse(true),
+    );
     let p35 = batch.map_stats(MapStatsRequest::new("x"));
     let p36 = batch.map_clear(MapClearRequest::new("x"));
-    let p37 = batch.shared_poll_publish(SharedPollPublishRequest::new("x", "x", 1));
+    let p37 = batch.shared_poll_publish(
+        SharedPollPublishRequest::new("x", "x", 1)
+            .data(raw("{}"))
+            .b64data("x")
+            .epoch("x"),
+    );
     batch.send().unwrap();
     p0.result().unwrap();
     p1.result().unwrap();

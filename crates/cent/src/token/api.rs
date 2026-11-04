@@ -38,9 +38,9 @@ pub struct ApiClaims {
     pub subject: String,
     /// When the token expires: required by [`api`], best minutes ahead.
     /// Centrifugo PRO would accept a token without `exp` for as long as its
-    /// key is published, so none is ever signed. [`ApiTokens`] sets it.
+    /// key is published, so none is ever signed. [`ApiTokenSource`] sets it.
     pub expires_at: Option<SystemTime>,
-    /// The `iat` claim: now when unset. [`ApiTokens`] sets it.
+    /// The `iat` claim: now when unset. [`ApiTokenSource`] sets it.
     pub issued_at: Option<SystemTime>,
     /// The `jti` claim.
     pub id: String,
@@ -113,7 +113,7 @@ struct ApiWire<'a> {
 
 /// Returns a token for the server API of Centrifugo PRO with `c`'s claims,
 /// signed with `key` - see [`ApiClaims`] for keeping it apart from client
-/// tokens, and [`ApiTokens`] for one sent with every call. Centrifugo PRO
+/// tokens, and [`ApiTokenSource`] for one sent with every call. Centrifugo PRO
 /// finds the key to verify it in its JWKS by the key ID, so `key` must be an
 /// asymmetric key with an ID, published by [`jwks`](super::jwks).
 pub fn api(key: &Key, c: &ApiClaims) -> Result<String, TokenError> {
@@ -159,7 +159,7 @@ pub fn api(key: &Key, c: &ApiClaims) -> Result<String, TokenError> {
     )
 }
 
-/// The current key of [`ApiTokens::current_key`].
+/// The current key of [`ApiTokenSource::current_key`].
 type CurrentKey = dyn Fn() -> Result<Key, TokenError> + Send + Sync;
 
 /// Issues the tokens a [`Client`](crate::Client) sends to Centrifugo PRO: it
@@ -170,16 +170,16 @@ type CurrentKey = dyn Fn() -> Result<Key, TokenError> + Send + Sync;
 ///
 /// ```
 /// # fn run(api_key: cent::token::Key) -> Result<(), cent::Error> {
-/// use cent::token::{ApiClaims, ApiTokens};
+/// use cent::token::{ApiClaims, ApiTokenSource};
 ///
-/// let tokens = ApiTokens::new(
+/// let tokens = ApiTokenSource::new(
 ///     api_key, // its own key, not the client tokens' - see ApiClaims
 ///     ApiClaims::new().audience("centrifugo-api").scope(["centrifugo:api"]),
 /// );
 /// let client = cent::Client::new(cent::Config::new("https://centrifugo.example.com/api").bearer_token(tokens))?;
 /// # Ok(()) }
 /// ```
-pub struct ApiTokens {
+pub struct ApiTokenSource {
     key: Key,
     current_key: Option<Arc<CurrentKey>>,
     claims: ApiClaims,
@@ -187,9 +187,9 @@ pub struct ApiTokens {
     cache: Mutex<Option<(String, SystemTime)>>,
 }
 
-impl fmt::Debug for ApiTokens {
+impl fmt::Debug for ApiTokenSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ApiTokens")
+        f.debug_struct("ApiTokenSource")
             .field("key", &self.key)
             .field("claims", &self.claims)
             .field("ttl", &self.ttl)
@@ -197,7 +197,7 @@ impl fmt::Debug for ApiTokens {
     }
 }
 
-impl ApiTokens {
+impl ApiTokenSource {
     /// Signs tokens with `key` and `claims`, each valid for 5 minutes.
     /// `claims` must leave `expires_at` and `issued_at` unset: the tokens are
     /// issued when needed and expire a TTL later.
@@ -243,11 +243,11 @@ impl ApiTokens {
         }
         if self.claims.expires_at.is_some() || self.claims.issued_at.is_some() {
             return Err(TokenError::new(
-                "ApiTokens sets expires_at and issued_at itself: leave them unset in its claims, and set its ttl",
+                "ApiTokenSource sets expires_at and issued_at itself: leave them unset in its claims, and set its ttl",
             ));
         }
         if self.ttl.is_zero() {
-            return Err(TokenError::new("ApiTokens with a zero ttl"));
+            return Err(TokenError::new("ApiTokenSource with a zero ttl"));
         }
         let key = match &self.current_key {
             Some(f) => f()?,
@@ -255,7 +255,7 @@ impl ApiTokens {
         };
         let mut claims = self.claims.clone();
         let Some(expires_at) = now.checked_add(self.ttl) else {
-            return Err(TokenError::new("ApiTokens with a ttl too far ahead"));
+            return Err(TokenError::new("ApiTokenSource with a ttl too far ahead"));
         };
         claims.issued_at = Some(now);
         claims.expires_at = Some(expires_at);
@@ -266,9 +266,9 @@ impl ApiTokens {
 }
 
 #[cfg(feature = "client")]
-impl crate::TokenSource for ApiTokens {
+impl crate::TokenSource for ApiTokenSource {
     fn token(&self) -> crate::BoxFuture<'_, Result<String, crate::BoxError>> {
-        let token = ApiTokens::token(self).map_err(Into::into);
+        let token = ApiTokenSource::token(self).map_err(Into::into);
         Box::pin(async move { token })
     }
 }

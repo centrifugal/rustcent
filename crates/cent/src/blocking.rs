@@ -23,7 +23,8 @@ use crate::client::Bound;
 use crate::error::TimeoutError;
 use crate::{
     BatchOptions, BatchResult, BroadcastRequest, BroadcastResult, BroadcastRetryOptions, Config,
-    Error, Pending,
+    Device, DeviceListRequest, DeviceTopic, DeviceTopicListRequest, Error, HistoryItem,
+    HistoryRequest, MapReadStateRequest, MapStateItem, Pending, UserTopic, UserTopicListRequest,
 };
 
 /// Calls Centrifugo's HTTP server API, blocking: the async
@@ -38,7 +39,7 @@ use crate::{
 #[derive(Clone)]
 pub struct Client {
     inner: Arc<Inner>,
-    bound: Option<Bound>,
+    bound: Bound,
 }
 
 struct Inner {
@@ -87,27 +88,32 @@ impl Client {
                 client,
                 runtime: Mutex::new((std::process::id(), runtime)),
             }),
-            bound: None,
+            bound: Bound::default(),
         })
     }
 
     /// Returns a handle to the same client whose calls each time out after
-    /// `timeout`: see [`crate::Client::with_timeout`].
+    /// `timeout`: the call's own timeout, replacing `request_timeout`, longer
+    /// or shorter; zero is refused - see [`crate::Client::with_timeout`].
     #[must_use]
     pub fn with_timeout(&self, timeout: Duration) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
-            bound: Some(Bound::Timeout(timeout)),
+            bound: self.bound.timeout(timeout),
         }
     }
 
-    /// Returns a handle to the same client whose calls end at `deadline`:
-    /// see [`crate::Client::with_deadline`].
+    /// Returns a handle to the same client whose calls end at `deadline` at
+    /// the latest: a deadline only shortens a call, which still times out
+    /// after `request_timeout` or its own timeout - see
+    /// [`crate::Client::with_deadline`].
     #[must_use]
     pub fn with_deadline(&self, deadline: Instant) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
-            bound: Some(Bound::Deadline(tokio::time::Instant::from_std(deadline))),
+            bound: self
+                .bound
+                .deadline(tokio::time::Instant::from_std(deadline)),
         }
     }
 
@@ -176,6 +182,48 @@ impl Client {
         self.run(move |c| async move { c.broadcast_with_retry(request, options).await })
     }
 
+    /// The publications of a channel's history, a page at a time: see
+    /// [`crate::Client::history_all`].
+    #[must_use]
+    pub fn history_all(&self, request: HistoryRequest) -> Pager<HistoryItem> {
+        self.pager(|c| c.history_all(request))
+    }
+
+    /// Every device `request` selects, a page at a time: see
+    /// [`crate::Client::device_list_all`]. Centrifugo PRO only.
+    #[must_use]
+    pub fn device_list_all(&self, request: DeviceListRequest) -> Pager<Device> {
+        self.pager(|c| c.device_list_all(request))
+    }
+
+    /// Every device topic `request` selects, a page at a time: see
+    /// [`crate::Client::device_topic_list_all`]. Centrifugo PRO only.
+    #[must_use]
+    pub fn device_topic_list_all(&self, request: DeviceTopicListRequest) -> Pager<DeviceTopic> {
+        self.pager(|c| c.device_topic_list_all(request))
+    }
+
+    /// Every user topic `request` selects, a page at a time: see
+    /// [`crate::Client::user_topic_list_all`]. Centrifugo PRO only.
+    #[must_use]
+    pub fn user_topic_list_all(&self, request: UserTopicListRequest) -> Pager<UserTopic> {
+        self.pager(|c| c.user_topic_list_all(request))
+    }
+
+    /// Every entry of a map channel's state, a page at a time: see
+    /// [`crate::Client::map_read_state_all`].
+    #[must_use]
+    pub fn map_read_state_all(&self, request: MapReadStateRequest) -> Pager<MapStateItem> {
+        self.pager(|c| c.map_read_state_all(request))
+    }
+
+    fn pager<T>(&self, f: impl FnOnce(&crate::Client) -> crate::Pager<T>) -> Pager<T> {
+        Pager {
+            inner: Some(f(&self.inner.client.with_bound(self.bound))),
+            client: self.clone(),
+        }
+    }
+
     /// Stops the client and waits for the calls in progress: see
     /// [`crate::Client::close`].
     pub fn close(&self, timeout: Duration) -> Result<(), Error> {
@@ -213,6 +261,55 @@ impl Batch {
     pub fn send(self) -> Result<BatchResult, Error> {
         let inner = self.inner;
         self.client.run(move |_| inner.send())
+    }
+}
+
+/// The items of a paged method, every page of them, read a page at a time:
+/// what [`Client::history_all`] and the other `*_all` methods return. An
+/// [`Iterator`] of the async [`crate::Pager`]'s items: a page is read when
+/// the iteration reaches it, and an error ends the iteration.
+///
+/// ```no_run
+/// # fn f(client: cent::blocking::Client) -> Result<(), cent::Error> {
+/// for device in client.device_list_all(cent::DeviceListRequest::new().limit(100)) {
+///     println!("{}", device?.id);
+/// }
+/// # Ok(()) }
+/// ```
+#[derive(Debug)]
+pub struct Pager<T> {
+    inner: Option<crate::Pager<T>>,
+    client: Client,
+}
+
+impl<T: Send + 'static> Pager<T> {
+    /// Bounds each page's request by `timeout`, replacing `request_timeout`
+    /// for it; zero is refused - see [`crate::Pager::page_timeout`]. The
+    /// handle's `with_timeout` does not apply to an iteration.
+    #[must_use]
+    pub fn page_timeout(mut self, timeout: Duration) -> Self {
+        self.inner = self.inner.map(|p| p.page_timeout(timeout));
+        self
+    }
+}
+
+impl<T: Send + 'static> Iterator for Pager<T> {
+    type Item = Result<T, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut pager = self.inner.take()?;
+        let res = self.client.run(move |_| async move {
+            let item = pager.next().await;
+            Ok((pager, item))
+        });
+        match res {
+            Ok((pager, item)) => {
+                self.inner = Some(pager);
+                item
+            }
+            // The runtime is gone: the client was dropped from under it.
+            Err(e) => Some(Err(e)),
+        }
     }
 }
 

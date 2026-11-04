@@ -57,8 +57,16 @@ pub enum Error {
     Decode(DecodeError),
     /// The client could tell the request is wrong, and did not send it.
     InvalidRequest(InvalidRequestError),
-    /// The client was not created, or cannot be used here: the message names
-    /// the option and the fix.
+    /// The client refuses to work as configured: it was not created, it is
+    /// used where it cannot work (another tokio runtime), or a configured
+    /// function - [`Config::with_endpoint_fn`] or [`Config::bearer_token`] -
+    /// returned what cannot be sent, an endpoint failing [`Config::new`]'s
+    /// rules or an empty or malformed token, and nothing was sent. The
+    /// message names the option and the fix. Not retryable.
+    ///
+    /// [`Config::with_endpoint_fn`]: crate::Config::with_endpoint_fn
+    /// [`Config::bearer_token`]: crate::Config::bearer_token
+    /// [`Config::new`]: crate::Config::new
     InvalidConfig(InvalidConfigError),
     /// A call made after the client was closed.
     Closed,
@@ -79,9 +87,12 @@ pub enum Error {
     Timeout(TimeoutError),
     /// The network failed: a refused or reset connection, a TLS failure.
     Network(NetworkError),
-    /// The application's `api_endpoint` or `bearer_token` function failed,
-    /// or returned what cannot be sent.
-    Callback(CallbackError),
+    /// The application's function given to `Config::with_endpoint_fn` or
+    /// `Config::bearer_token` returned an error: it is the source, and the
+    /// message names the function. Judged by [`retryable`](crate::retryable)
+    /// as its source is. What such a function returns and the client cannot
+    /// send is an [`Error::InvalidConfig`] instead.
+    Function(FunctionError),
     /// A payload did not encode, or decode as the type asked: from
     /// [`json`](crate::json) and [`PayloadExt::decode`](crate::PayloadExt::decode).
     Payload(PayloadError),
@@ -223,9 +234,10 @@ impl fmt::Display for HttpError {
         write!(f, "unexpected HTTP status {}", self.status.as_u16())?;
         let code = self.status.as_u16();
         if self.status.is_redirection() {
-            // Centrifugo's API never redirects: something in front of it
-            // does, which the client does not follow.
-            f.write_str(" (a redirect, which the client does not follow: check api_endpoint, http or https say)")?;
+            // Centrifugo's API never redirects a call: its router redirects
+            // only a path not in canonical form, a doubled slash say, and
+            // something in front of it may redirect http to https.
+            f.write_str(" (a redirect, which the client does not follow: check api_endpoint's scheme, http or https, and its path)")?;
         } else if code == 404 {
             match self.pro_method {
                 Some(m) => write!(
@@ -488,34 +500,36 @@ impl std::error::Error for NetworkError {
     }
 }
 
-/// A failure of the application's `api_endpoint` or `bearer_token` function:
-/// its error, or what it returned and the client cannot send.
+/// An error of the application's function given to
+/// `Config::with_endpoint_fn` or `Config::bearer_token`: the function's own
+/// error, its source, and the function's name.
 #[derive(Debug, Clone)]
-pub struct CallbackError {
-    which: &'static str,
+pub struct FunctionError {
+    function: &'static str,
     source: Source,
 }
 
-impl CallbackError {
+impl FunctionError {
     #[cfg(feature = "client")]
-    pub(crate) fn new(which: &'static str, source: Source) -> Self {
-        Self { which, source }
+    pub(crate) fn new(function: &'static str, source: Source) -> Self {
+        Self { function, source }
     }
 
-    /// The callback: `"api_endpoint"` or `"bearer_token"`.
+    /// The function, as `Config` names it: `"with_endpoint_fn"` or
+    /// `"bearer_token"`.
     #[must_use]
-    pub fn which(&self) -> &'static str {
-        self.which
+    pub fn function(&self) -> &'static str {
+        self.function
     }
 }
 
-impl fmt::Display for CallbackError {
+impl fmt::Display for FunctionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.which, self.source)
+        write!(f, "{}: {}", self.function, self.source)
     }
 }
 
-impl std::error::Error for CallbackError {
+impl std::error::Error for FunctionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&*self.source)
     }
@@ -643,7 +657,7 @@ impl fmt::Display for Error {
             Self::RetryStopped(e) => e.fmt(f),
             Self::Timeout(e) => e.fmt(f),
             Self::Network(e) => e.fmt(f),
-            Self::Callback(e) => e.fmt(f),
+            Self::Function(e) => e.fmt(f),
             Self::Payload(e) => e.fmt(f),
         }
     }
@@ -655,7 +669,7 @@ impl std::error::Error for Error {
             Self::Decode(e) => e.source(),
             Self::Payload(e) => e.source(),
             Self::Network(e) => Some(&*e.source),
-            Self::Callback(e) => Some(&*e.source),
+            Self::Function(e) => Some(&*e.source),
             Self::RetryStopped(e) => Some(&e.error),
             _ => None,
         }
@@ -695,9 +709,10 @@ impl Serialize for Error {
 ///
 /// Not retryable are the request's own errors - an unknown channel, a bad
 /// request, [`Error::InvalidRequest`] - a reply which is not Centrifugo's,
-/// refused credentials, [`Error::Closed`], and the errors of the
-/// application's `api_endpoint` and `bearer_token` functions, unless they
-/// are I/O errors a retry may fix.
+/// refused credentials, [`Error::Closed`], [`Error::InvalidConfig`] - an
+/// endpoint or token a configured function returned and the client cannot
+/// send included - and the errors of the application's `with_endpoint_fn`
+/// and `bearer_token` functions, unless they are I/O errors a retry may fix.
 ///
 /// A retryable error does not mean nothing was done: after a timeout, or even
 /// an internal error, Centrifugo may have published already. Retry a
@@ -718,7 +733,7 @@ pub fn retryable(err: &Error) -> bool {
         #[cfg(feature = "client")]
         Error::BatchFailedCommands(e) => e.failed().iter().any(|c| retryable(&c.error)),
         Error::RetryStopped(e) => retryable(&e.error),
-        Error::Callback(e) => io_retryable(&*e.source),
+        Error::Function(e) => io_retryable(&*e.source),
         Error::Decode(_)
         | Error::InvalidRequest(_)
         | Error::InvalidConfig(_)

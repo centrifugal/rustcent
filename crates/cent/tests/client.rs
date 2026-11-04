@@ -78,7 +78,7 @@ async fn requests_are_posts_of_json_with_headers() {
     assert_eq!(r.method, http::Method::POST);
     assert_eq!(r.uri, "http://centrifugo.test/api/publish");
     assert_eq!(r.headers["content-type"], "application/json");
-    assert_eq!(r.headers["user-agent"], "rustcent/0.1");
+    assert_eq!(r.headers["user-agent"], "rustcent/0.2");
     assert_eq!(r.headers["x-api-key"], "key");
     assert_eq!(r.headers["x-trace"], "1");
     assert_eq!(r.headers["host"], "centrifugo.internal");
@@ -128,27 +128,53 @@ async fn bad_endpoints_and_tokens_fail_before_sending() {
     }))
     .await
     .unwrap_err();
+    // What a configured function returns and cannot be sent is refused as
+    // the configuration is: InvalidConfig, not retryable (spec 3.1).
     assert!(
-        matches!(&e, Error::Callback(c) if c.which() == "api_endpoint"),
+        matches!(&e, Error::InvalidConfig(_))
+            && e.to_string().contains("with_endpoint_fn returned")
+            && !retryable(&e),
         "{e}"
     );
+    let e = call(Config::with_endpoint_fn(|| async {
+        Ok("ftp://h/api".to_owned())
+    }))
+    .await
+    .unwrap_err();
+    assert!(matches!(&e, Error::InvalidConfig(_)), "{e}");
+    // The function's own error is its source, the message naming it.
     let e = call(Config::with_endpoint_fn(|| async {
         Err("discovery down".into())
     }))
     .await
     .unwrap_err();
-    assert!(e.to_string().contains("discovery down") && !retryable(&e));
-    let e = call(Config::new("http://h/api").bearer_token(|| async { Ok(String::new()) }))
+    assert!(
+        matches!(&e, Error::Function(f) if f.function() == "with_endpoint_fn"),
+        "{e}"
+    );
+    assert_eq!(e.to_string(), "with_endpoint_fn: discovery down");
+    assert!(!retryable(&e));
+    for token in ["", "a\nb", "a\u{7f}b"] {
+        let e = call(
+            Config::new("http://h/api").bearer_token(move || async move { Ok(token.to_owned()) }),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(&e, Error::InvalidConfig(_))
+                && e.to_string().contains("bearer_token returned")
+                && !retryable(&e),
+            "{token:?}: {e}"
+        );
+    }
+    let e = call(Config::new("http://h/api").bearer_token(|| async { Err("signer down".into()) }))
         .await
         .unwrap_err();
     assert!(
-        matches!(&e, Error::Callback(c) if c.which() == "bearer_token"),
+        matches!(&e, Error::Function(f) if f.function() == "bearer_token"),
         "{e}"
     );
-    let e = call(Config::new("http://h/api").bearer_token(|| async { Ok("a\nb".to_owned()) }))
-        .await
-        .unwrap_err();
-    assert!(matches!(e, Error::Callback(_)));
+    assert_eq!(e.to_string(), "bearer_token: signer down");
     // An I/O failure of the application's function is retryable.
     let e = call(Config::new("http://h/api").bearer_token(|| async {
         Err(std::io::Error::from(std::io::ErrorKind::ConnectionRefused).into())
@@ -332,6 +358,101 @@ async fn invalid_requests_are_not_sent() {
     assert_eq!(fake.requests().len(), 1);
 }
 
+/// A field marked "Required." is checked for a value before sending (spec
+/// 3.3, 3.5): `new("")` passes it empty, and an empty one is a missing one on
+/// the wire. The error names its path, nested messages and list elements
+/// included, and nothing is sent - from a call, a batch or a command. A
+/// field whose empty value has a meaning, and a nested message set but empty
+/// (which is not sent), are not checked.
+#[tokio::test]
+async fn required_fields_are_checked_for_a_value() {
+    use cent::{
+        FcmPushNotification, PushLimitStrategy, PushNotification, PushRateLimitStrategy,
+        PushRecipient, RateLimitPolicy, SendPushNotificationRequest,
+    };
+    let fake = Fake::centrifugo();
+    let client = Client::new(fake.config()).unwrap();
+    let recipient = || PushRecipient::new().fcm_tokens(["d"]);
+    let notification = || PushNotification::new().fcm(FcmPushNotification::new(raw("{}")));
+    let invalid = |e: &Error, method: &str, path: &str| {
+        assert!(
+            matches!(e, Error::InvalidRequest(i) if i.method() == method),
+            "{e:?}"
+        );
+        assert!(
+            e.to_string().contains(&format!("{path} is required")),
+            "{e}"
+        );
+    };
+
+    let e = client.presence(PresenceRequest::new("")).await.unwrap_err();
+    invalid(&e, "presence", "channel");
+    for (req, path) in [
+        (
+            SendPushNotificationRequest::new(PushRecipient::new(), notification()),
+            "recipient",
+        ),
+        (
+            SendPushNotificationRequest::new(recipient(), PushNotification::new()),
+            "notification",
+        ),
+        (
+            SendPushNotificationRequest::new(
+                recipient(),
+                PushNotification::new().fcm(FcmPushNotification::new(raw("null"))),
+            )
+            .limit_strategy(
+                PushLimitStrategy::new().rate_limit(
+                    PushRateLimitStrategy::new()
+                        .policies([RateLimitPolicy::new(5, 1000), RateLimitPolicy::new(0, 1000)]),
+                ),
+            ),
+            "limit_strategy.rate_limit.policies[1].rate",
+        ),
+    ] {
+        let e = client.send_push_notification(req).await.unwrap_err();
+        invalid(&e, "send_push_notification", path);
+    }
+    let e = cent::Command::presence(PresenceRequest::new("")).unwrap_err();
+    invalid(&e, "presence", "channel");
+    assert_eq!(fake.requests().len(), 0);
+
+    // A batch holding one fails before sending, naming the command.
+    let mut b = client.new_batch(cent::BatchOptions::default());
+    let _good = b.presence(PresenceRequest::new("c"));
+    let bad = b.presence(PresenceRequest::new(""));
+    let e = b.send().await.unwrap_err();
+    invalid(&e, "presence", "channel");
+    invalid(&bad.result().unwrap_err(), "presence", "channel");
+    assert_eq!(fake.requests().len(), 0);
+
+    // Empty has a meaning: "" detaches the devices from their user. A
+    // limit strategy set but empty is not sent, so not checked.
+    client
+        .device_update(
+            cent::DeviceUpdateRequest::new()
+                .users(["42"])
+                .user_update(cent::DeviceUserUpdate::new("")),
+        )
+        .await
+        .unwrap();
+    client
+        .send_push_notification(
+            SendPushNotificationRequest::new(recipient(), notification())
+                .limit_strategy(PushLimitStrategy::new()),
+        )
+        .await
+        .unwrap();
+    let sent = fake.requests();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[0].body["user_update"], serde_json::json!({}));
+    assert!(
+        sent[1].body.get("limit_strategy").is_none(),
+        "{}",
+        sent[1].body
+    );
+}
+
 // Spec 3.4: a payload is carried exactly, in and out.
 #[tokio::test]
 async fn payloads_round_trip_exactly() {
@@ -447,27 +568,124 @@ async fn timeouts() {
     let e = client.info(InfoRequest::new()).await.unwrap_err();
     assert!(e.is_timeout() && retryable(&e), "{e:?}");
     assert!(start.elapsed() < Duration::from_secs(1));
-    // A call's own timeout, and a deadline, take precedence.
+    // A call's own timeout replaces request_timeout: shorter here...
+    let start = std::time::Instant::now();
     let e = client
         .with_timeout(Duration::from_millis(10))
         .info(InfoRequest::new())
         .await
         .unwrap_err();
     assert!(e.is_timeout());
+    assert!(
+        start.elapsed() < Duration::from_millis(45),
+        "{:?}",
+        start.elapsed()
+    );
     let fast =
         Fake::new(|_| Answer::After(Duration::from_millis(100), Box::new(ok(r#"{"result":{}}"#))));
     let client = Client::new(fast.config().request_timeout(Duration::from_millis(10))).unwrap();
+    // ...and longer here.
     client
         .with_timeout(Duration::from_secs(5))
         .info(InfoRequest::new())
         .await
         .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    client
-        .with_deadline(deadline)
+    // A deadline only shortens a call: a later one leaves request_timeout
+    // in force (spec 3.2).
+    let start = std::time::Instant::now();
+    let e = client
+        .with_deadline(std::time::Instant::now() + Duration::from_secs(5))
         .info(InfoRequest::new())
         .await
-        .unwrap();
+        .unwrap_err();
+    assert!(
+        e.is_timeout(),
+        "a later deadline does not extend a call: {e:?}"
+    );
+    assert!(
+        start.elapsed() < Duration::from_millis(80),
+        "{:?}",
+        start.elapsed()
+    );
+    // An earlier one ends it, before request_timeout and the call's own
+    // timeout, in either order.
+    let slow = Client::new(fast.config().request_timeout(Duration::from_secs(60))).unwrap();
+    let soon = || std::time::Instant::now() + Duration::from_millis(20);
+    for c in [
+        slow.with_deadline(soon()),
+        slow.with_deadline(soon())
+            .with_timeout(Duration::from_secs(5)),
+        slow.with_timeout(Duration::from_secs(5))
+            .with_deadline(soon()),
+    ] {
+        let start = std::time::Instant::now();
+        let e = c.info(InfoRequest::new()).await.unwrap_err();
+        assert!(e.is_timeout(), "{e:?}");
+        assert!(
+            start.elapsed() < Duration::from_millis(80),
+            "{:?}",
+            start.elapsed()
+        );
+    }
+    // Two deadlines: the earlier holds.
+    let start = std::time::Instant::now();
+    slow.with_deadline(soon())
+        .with_deadline(std::time::Instant::now() + Duration::from_secs(5))
+        .info(InfoRequest::new())
+        .await
+        .unwrap_err();
+    assert!(
+        start.elapsed() < Duration::from_millis(80),
+        "{:?}",
+        start.elapsed()
+    );
+}
+
+/// Unset is the default timeout; zero, which would time out every call, is
+/// refused: `request_timeout` at creation, `with_timeout` and
+/// `attempt_timeout` at the call, before sending (spec 3.1).
+#[tokio::test]
+async fn zero_timeouts_are_refused() {
+    let fake = Fake::centrifugo();
+    assert!(Client::new(fake.config().request_timeout(Duration::ZERO)).is_err());
+    let client = Client::new(fake.config()).unwrap();
+    let zero = client.with_timeout(Duration::ZERO);
+    let e = zero.info(InfoRequest::new()).await.unwrap_err();
+    assert!(
+        matches!(&e, Error::InvalidConfig(_)) && e.to_string().contains("with_timeout is zero"),
+        "{e}"
+    );
+    assert!(!retryable(&e));
+    let mut b = zero.new_batch(cent::BatchOptions::default());
+    let p = b.info(InfoRequest::new());
+    assert!(matches!(b.send().await, Err(Error::InvalidConfig(_))));
+    assert!(matches!(p.result(), Err(Error::InvalidConfig(_))));
+    let e = zero
+        .broadcast_with_retry(
+            cent::BroadcastRequest::new(["a"]).data(raw("1")),
+            cent::BroadcastRetryOptions::default(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(&e, Error::InvalidConfig(_)), "{e}");
+    let e = client
+        .broadcast_with_retry(
+            cent::BroadcastRequest::new(["a"]).data(raw("1")),
+            cent::BroadcastRetryOptions::default().attempt_timeout(Duration::ZERO),
+        )
+        .await
+        .unwrap_err();
+    assert!(e.to_string().contains("attempt_timeout is zero"), "{e}");
+    let mut pages = client
+        .device_list_all(cent::DeviceListRequest::new())
+        .page_timeout(Duration::ZERO);
+    let e = pages.next().await.unwrap().unwrap_err();
+    assert!(
+        matches!(&e, Error::InvalidRequest(_)) && e.to_string().contains("page_timeout is zero"),
+        "{e}"
+    );
+    assert!(pages.next().await.is_none());
+    assert!(fake.requests().is_empty(), "nothing sent");
 }
 
 #[tokio::test]

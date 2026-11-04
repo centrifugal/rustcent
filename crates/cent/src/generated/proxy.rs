@@ -11,7 +11,9 @@ use serde_json::value::RawValue;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct FilterNode {
-    /// The logical operation: "and", "or" or "not". Empty for a leaf node.
+    /// The logical operation. Empty for a leaf node. One of: and, or, not.
+    ///
+    /// The values have constants: [`FILTER_NODE_OP_AND`], [`FILTER_NODE_OP_OR`], [`FILTER_NODE_OP_NOT`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -25,9 +27,11 @@ pub struct FilterNode {
         deserialize_with = "crate::wire::nullable"
     )]
     pub key: String,
-    /// The comparison of a leaf node: "eq", "neq", "in", "nin", "ex"
-    /// (exists), "nex" (does not exist), "sw" (starts with), "ew" (ends with), "ct"
-    /// (contains), "gt", "gte", "lt" or "lte".
+    /// The comparison of a leaf node: ex is exists, nex does not exist,
+    /// sw starts with, ew ends with, ct contains. One of: eq, neq, in, nin, ex,
+    /// nex, sw, ew, ct, gt, gte, lt, lte.
+    ///
+    /// The values have constants: [`CMP_EQ`], [`CMP_NEQ`], [`CMP_IN`], [`CMP_NIN`], [`CMP_EX`], [`CMP_NEX`], [`CMP_SW`], [`CMP_EW`], [`CMP_CT`], [`CMP_GT`], [`CMP_GTE`], [`CMP_LT`], [`CMP_LTE`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -229,15 +233,20 @@ pub struct ConnectRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
+    ///
+    /// The values have constants: [`PROTOCOL_JSON`], [`PROTOCOL_PROTOBUF`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
+    ///
+    /// The values have constants: [`ENCODING_JSON`], [`ENCODING_BINARY`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -512,6 +521,15 @@ pub struct ConnectResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub labels: BTreeMap<String, String>,
+    /// `profile` assigns the connection to a dictionary compression profile, as the
+    /// profile claim of a connection token does: it overrides the profile the
+    /// client declared. Centrifugo PRO only.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::wire::is_default",
+        deserialize_with = "crate::wire::nullable"
+    )]
+    pub profile: String,
 }
 
 impl ConnectResult {
@@ -530,6 +548,7 @@ impl ConnectResult {
             meta: None,
             caps: Vec::new(),
             labels: BTreeMap::new(),
+            profile: String::new(),
         }
     }
 
@@ -618,6 +637,13 @@ impl ConnectResult {
             .collect();
         self
     }
+
+    /// Sets `profile`.
+    #[must_use]
+    pub fn profile(mut self, value: impl Into<String>) -> Self {
+        self.profile = value.into();
+        self
+    }
 }
 
 /// ChannelsCapability grants operations in channels. A connection may do an
@@ -633,16 +659,20 @@ pub struct ChannelsCapability {
         deserialize_with = "crate::wire::nullable"
     )]
     pub channels: Vec<String>,
-    /// The operations it grants: "sub" (subscribe), "pub" (publish),
-    /// "hst" (history) and "prs" (presence).
+    /// The operations it grants: sub is subscribe, pub publish, hst
+    /// history, prs presence. One of: sub, pub, hst, prs.
+    ///
+    /// The values have constants: [`ALLOW_SUB`], [`ALLOW_PUB`], [`ALLOW_HST`], [`ALLOW_PRS`].
     #[serde(
         default,
         skip_serializing_if = "Vec::is_empty",
         deserialize_with = "crate::wire::nullable"
     )]
     pub allow: Vec<String>,
-    /// How channels are matched: empty for exact names, "wildcard" or
-    /// "regex".
+    /// How channels are matched: empty for exact names. One of:
+    /// wildcard, regex.
+    ///
+    /// The values have constants: [`CAPABILITY_MATCH_WILDCARD`], [`CAPABILITY_MATCH_REGEX`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -718,15 +748,20 @@ pub struct RefreshRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
+    ///
+    /// The values have constants: [`PROTOCOL_JSON`], [`PROTOCOL_PROTOBUF`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
+    ///
+    /// The values have constants: [`ENCODING_JSON`], [`ENCODING_BINARY`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -898,15 +933,20 @@ pub struct SubscribeRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
+    ///
+    /// The values have constants: [`PROTOCOL_JSON`], [`PROTOCOL_PROTOBUF`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
+    ///
+    /// The values have constants: [`ENCODING_JSON`], [`ENCODING_BINARY`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1104,8 +1144,10 @@ pub struct SubscribeResult {
     /// subscription.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub r#override: Option<SubscribeOptionOverride>,
-    /// Capabilities granted in the channel for this subscription:
-    /// "sub", "pub", "hst" and "prs". Centrifugo PRO only.
+    /// Capabilities granted in the channel for this subscription.
+    /// Centrifugo PRO only. One of: sub, pub, hst, prs.
+    ///
+    /// The values have constants: [`ALLOW_SUB`], [`ALLOW_PUB`], [`ALLOW_HST`], [`ALLOW_PRS`].
     #[serde(
         default,
         skip_serializing_if = "Vec::is_empty",
@@ -1226,15 +1268,20 @@ pub struct PublishRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
+    ///
+    /// The values have constants: [`PROTOCOL_JSON`], [`PROTOCOL_PROTOBUF`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
+    ///
+    /// The values have constants: [`ENCODING_JSON`], [`ENCODING_BINARY`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1470,15 +1517,20 @@ pub struct MapPublishRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
+    ///
+    /// The values have constants: [`PROTOCOL_JSON`], [`PROTOCOL_PROTOBUF`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
+    ///
+    /// The values have constants: [`ENCODING_JSON`], [`ENCODING_BINARY`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1579,8 +1631,11 @@ pub struct MapPublishResult {
         deserialize_with = "crate::wire::nullable"
     )]
     pub score: i64,
-    /// `key_mode` makes the publication conditional: "if_new" publishes only a key
-    /// which does not exist yet, "if_exists" only one which does.
+    /// `key_mode` makes the publication conditional: if_new publishes only a key
+    /// which does not exist yet, if_exists only one which does.
+    /// One of: if_new, if_exists.
+    ///
+    /// The values have constants: [`KEY_MODE_IF_NEW`], [`KEY_MODE_IF_EXISTS`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1780,15 +1835,20 @@ pub struct MapRemoveRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
+    ///
+    /// The values have constants: [`PROTOCOL_JSON`], [`PROTOCOL_PROTOBUF`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
+    ///
+    /// The values have constants: [`ENCODING_JSON`], [`ENCODING_BINARY`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -1937,15 +1997,20 @@ pub struct RpcRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
+    ///
+    /// The values have constants: [`PROTOCOL_JSON`], [`PROTOCOL_PROTOBUF`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
+    ///
+    /// The values have constants: [`ENCODING_JSON`], [`ENCODING_BINARY`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2077,15 +2142,20 @@ pub struct SubRefreshRequest {
         deserialize_with = "crate::wire::nullable"
     )]
     pub transport: String,
-    /// The client protocol: "json" or "protobuf".
+    /// The client protocol. One of: json, protobuf.
+    ///
+    /// The values have constants: [`PROTOCOL_JSON`], [`PROTOCOL_PROTOBUF`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
         deserialize_with = "crate::wire::nullable"
     )]
     pub protocol: String,
-    /// "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
+    ///
+    /// The values have constants: [`ENCODING_JSON`], [`ENCODING_BINARY`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2315,9 +2385,11 @@ pub struct ChannelEvent {
         deserialize_with = "crate::wire::nullable"
     )]
     pub channel: String,
-    /// "occupied" when the channel got its first subscriber, "vacated"
+    /// Occupied when the channel got its first subscriber, vacated
     /// when it lost its last one. More types may come; the field is a string,
-    /// not an enum, for JSON interoperability.
+    /// not an enum, for JSON interoperability. One of: occupied, vacated.
+    ///
+    /// The values have constants: [`CHANNEL_EVENT_TYPE_OCCUPIED`], [`CHANNEL_EVENT_TYPE_VACATED`].
     #[serde(
         default,
         skip_serializing_if = "crate::wire::is_default",
@@ -2550,3 +2622,123 @@ pub struct SharedPollRefreshResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<Error>,
 }
+
+/// `"and"`, a value of `op` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const FILTER_NODE_OP_AND: &str = "and";
+
+/// `"or"`, a value of `op` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const FILTER_NODE_OP_OR: &str = "or";
+
+/// `"not"`, a value of `op` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const FILTER_NODE_OP_NOT: &str = "not";
+
+/// `"eq"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_EQ: &str = "eq";
+
+/// `"neq"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_NEQ: &str = "neq";
+
+/// `"in"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_IN: &str = "in";
+
+/// `"nin"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_NIN: &str = "nin";
+
+/// `"ex"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_EX: &str = "ex";
+
+/// `"nex"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_NEX: &str = "nex";
+
+/// `"sw"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_SW: &str = "sw";
+
+/// `"ew"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_EW: &str = "ew";
+
+/// `"ct"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_CT: &str = "ct";
+
+/// `"gt"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_GT: &str = "gt";
+
+/// `"gte"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_GTE: &str = "gte";
+
+/// `"lt"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_LT: &str = "lt";
+
+/// `"lte"`, a value of `cmp` of [`FilterNode`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CMP_LTE: &str = "lte";
+
+/// `"json"`, a value of `protocol` of [`ConnectRequest`], `protocol` of [`RefreshRequest`], `protocol` of [`SubscribeRequest`], `protocol` of [`PublishRequest`], `protocol` of [`MapPublishRequest`], `protocol` of [`MapRemoveRequest`], `protocol` of [`RpcRequest`] and `protocol` of [`SubRefreshRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const PROTOCOL_JSON: &str = "json";
+
+/// `"protobuf"`, a value of `protocol` of [`ConnectRequest`], `protocol` of [`RefreshRequest`], `protocol` of [`SubscribeRequest`], `protocol` of [`PublishRequest`], `protocol` of [`MapPublishRequest`], `protocol` of [`MapRemoveRequest`], `protocol` of [`RpcRequest`] and `protocol` of [`SubRefreshRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const PROTOCOL_PROTOBUF: &str = "protobuf";
+
+/// `"json"`, a value of `encoding` of [`ConnectRequest`], `encoding` of [`RefreshRequest`], `encoding` of [`SubscribeRequest`], `encoding` of [`PublishRequest`], `encoding` of [`MapPublishRequest`], `encoding` of [`MapRemoveRequest`], `encoding` of [`RpcRequest`] and `encoding` of [`SubRefreshRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const ENCODING_JSON: &str = "json";
+
+/// `"binary"`, a value of `encoding` of [`ConnectRequest`], `encoding` of [`RefreshRequest`], `encoding` of [`SubscribeRequest`], `encoding` of [`PublishRequest`], `encoding` of [`MapPublishRequest`], `encoding` of [`MapRemoveRequest`], `encoding` of [`RpcRequest`] and `encoding` of [`SubRefreshRequest`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const ENCODING_BINARY: &str = "binary";
+
+/// `"sub"`, a value of `allow` of [`ChannelsCapability`] and `allow` of [`SubscribeResult`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const ALLOW_SUB: &str = "sub";
+
+/// `"pub"`, a value of `allow` of [`ChannelsCapability`] and `allow` of [`SubscribeResult`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const ALLOW_PUB: &str = "pub";
+
+/// `"hst"`, a value of `allow` of [`ChannelsCapability`] and `allow` of [`SubscribeResult`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const ALLOW_HST: &str = "hst";
+
+/// `"prs"`, a value of `allow` of [`ChannelsCapability`] and `allow` of [`SubscribeResult`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const ALLOW_PRS: &str = "prs";
+
+/// `"wildcard"`, a value of `match` of [`ChannelsCapability`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CAPABILITY_MATCH_WILDCARD: &str = "wildcard";
+
+/// `"regex"`, a value of `match` of [`ChannelsCapability`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CAPABILITY_MATCH_REGEX: &str = "regex";
+
+/// `"if_new"`, a value of `key_mode` of [`MapPublishResult`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const KEY_MODE_IF_NEW: &str = "if_new";
+
+/// `"if_exists"`, a value of `key_mode` of [`MapPublishResult`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const KEY_MODE_IF_EXISTS: &str = "if_exists";
+
+/// `"occupied"`, a value of `type` of [`ChannelEvent`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CHANNEL_EVENT_TYPE_OCCUPIED: &str = "occupied";
+
+/// `"vacated"`, a value of `type` of [`ChannelEvent`]. The field is a string: a value
+/// Centrifugo accepts which no constant names can still be sent.
+pub const CHANNEL_EVENT_TYPE_VACATED: &str = "vacated";

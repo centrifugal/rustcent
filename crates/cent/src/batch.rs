@@ -287,6 +287,9 @@ impl Batch {
             Ok(e) => e,
             Err(e) => return Err((commands, e)),
         };
+        if let Err(e) = client.check_bound() {
+            return Err((commands, e));
+        }
         let deadline = client.deadline();
         if tokio::time::Instant::now() >= deadline {
             let e = Error::Timeout(crate::error::TimeoutError {

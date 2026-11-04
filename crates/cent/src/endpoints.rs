@@ -4,15 +4,15 @@
 //! public keys from.
 //!
 //! Each is a [`Handler`] around a function of the application's deciding who
-//! gets what. It answers a JSON object, never cached; [`Unauthorized`] - also
+//! gets what. It answers a JSON object, never cached; [`Forbidden`] - also
 //! inside another error - with 403, on which client SDKs stop asking and
-//! disconnect or unsubscribe; and any other error with 500, which client SDKs
+//! disconnect or unsubscribe, reporting it as their `UnauthorizedError`; and any other error with 500, which client SDKs
 //! retry.
 //!
 #![cfg_attr(feature = "token", doc = "```")]
 #![cfg_attr(not(feature = "token"), doc = "```ignore")]
 //! use std::time::Duration;
-//! use cent::endpoints::{Handlers, Unauthorized};
+//! use cent::endpoints::{Forbidden, Handlers};
 //! use cent::token::{self, ConnectionClaims, Key};
 //!
 //! let key = Key::hmac("secret")?;
@@ -21,7 +21,7 @@
 //!     async move {
 //!         // The user an authentication middleware put into the extensions.
 //!         let Some(user) = parts.extensions.get::<String>() else {
-//!             return Err(Unauthorized.into());
+//!             return Err(Forbidden.into());
 //!         };
 //!         let claims = ConnectionClaims::new(user, cent::Expiry::after(Duration::from_secs(3600)));
 //!         Ok(token::connection(&key, &claims)?)
@@ -48,25 +48,26 @@ const MAX_REQUEST_BYTES: usize = 1 << 20;
 
 /// Returned - or inside the error returned - by an endpoint's function when
 /// the user may not have what they ask for: answered with HTTP status 403, on
-/// which client SDKs throw `UnauthorizedError` in their `getToken` callbacks,
-/// stop asking, and disconnect or unsubscribe.
+/// which client SDKs stop asking, and disconnect or unsubscribe (spec 12).
 ///
-/// It is the endpoints' own, named after client SDKs' `UnauthorizedError`,
-/// and distinct from the API client's [`Error::is_unauthorized`](crate::Error::is_unauthorized),
-/// which means Centrifugo refused the client's credentials.
+/// Client SDKs report the 403 as their `UnauthorizedError`, which their docs
+/// name: this is that error, on the backend's side. It is not the API
+/// client's [`Error::is_unauthorized`](crate::Error::is_unauthorized), which
+/// means Centrifugo refused this backend's credentials - named apart so that
+/// matching one where the other is meant cannot happen silently.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Unauthorized;
+pub struct Forbidden;
 
-impl fmt::Display for Unauthorized {
+impl fmt::Display for Forbidden {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("unauthorized")
+        f.write_str("forbidden")
     }
 }
 
-impl std::error::Error for Unauthorized {}
+impl std::error::Error for Forbidden {}
 
-fn is_unauthorized(err: &BoxError) -> bool {
-    crate::error::chain(&**err).any(<dyn std::error::Error>::is::<Unauthorized>)
+fn is_forbidden(err: &BoxError) -> bool {
+    crate::error::chain(&**err).any(<dyn std::error::Error>::is::<Forbidden>)
 }
 
 /// Builds the [`Handler`]s of the endpoints client SDKs call, all sharing its
@@ -134,7 +135,7 @@ impl Handlers {
 
     /// Tells `f` of every request a handler could not answer as its function
     /// meant: one failed with HTTP status 500 - by an error other than
-    /// [`Unauthorized`] - and a malformed one, rejected with status 400. It
+    /// [`Forbidden`] - and a malformed one, rejected with status 400. It
     /// must not panic.
     #[must_use]
     pub fn on_error(
@@ -148,7 +149,7 @@ impl Handlers {
     /// The endpoint the `getToken` callback of a client calls: `f` returns
     /// the connection token of the request's user - from
     /// [`token::connection`](crate::token::connection), say - or
-    /// [`Unauthorized`]. It takes `GET` and `POST`, the body ignored, and
+    /// [`Forbidden`]. It takes `GET` and `POST`, the body ignored, and
     /// answers `{"token": "..."}`.
     pub fn connection_token<F, Fut>(&self, f: F) -> Handler
     where
@@ -180,7 +181,7 @@ impl Handlers {
     /// The endpoint the `getToken` callback of a subscription calls: `f`
     /// returns the token of the request's user for `channel` - from
     /// [`token::subscription`](crate::token::subscription), say - or
-    /// [`Unauthorized`] when the user may not subscribe. The channel comes
+    /// [`Forbidden`] when the user may not subscribe. The channel comes
     /// from a `POST`'s JSON body, `{"channel": "..."}`, or from the `channel`
     /// query parameter of a `GET`; a request without one is answered with
     /// 400.
@@ -236,7 +237,7 @@ impl Handlers {
     /// them - with [`sharedpoll::sign`](crate::sharedpoll::sign), say. It
     /// returns them with the signature as [`SignedKeys`]; the keys it leaves
     /// out are revoked: the client stops tracking them. To end the
-    /// subscription instead, it returns [`Unauthorized`]. It may return only
+    /// subscription instead, it returns [`Forbidden`]. It may return only
     /// keys it was asked for: a key it was not asked for fails the request
     /// with 500.
     pub fn shared_poll_signature<F, Fut>(&self, f: F) -> Handler
@@ -328,7 +329,7 @@ fn encode(v: &impl Serialize) -> Vec<u8> {
 }
 
 /// Answers a function's outcome: its JSON, never cached; 403 for
-/// [`Unauthorized`]; 500 for any other error, told to `on_error`.
+/// [`Forbidden`]; 500 for any other error, told to `on_error`.
 fn answer(
     parts: &http::request::Parts,
     on_error: Option<&OnError>,
@@ -342,7 +343,7 @@ fn answer(
                 .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
             r
         }
-        Err(e) if is_unauthorized(&e) => crate::handler::plain(StatusCode::FORBIDDEN, "Forbidden"),
+        Err(e) if is_forbidden(&e) => crate::handler::plain(StatusCode::FORBIDDEN, "Forbidden"),
         Err(e) => fail(parts, on_error, StatusCode::INTERNAL_SERVER_ERROR, &e),
     }
 }

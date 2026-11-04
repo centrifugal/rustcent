@@ -1,0 +1,16 @@
+# The names of the constants of api.proto's fields with a "One of:" sentence,
+# as section 3.3 of the spec pins them for every SDK: a selector,
+# Message.field, and the name, written here as the spec writes it and
+# spelled the Rust way by the generator - FilterNodeOp's `and` is
+# FILTER_NODE_OP_AND. A name never changes once given; a field with a new
+# sentence fails the generation until it is named here and in the spec's
+# table.
+FilterNode.op FilterNodeOp
+FilterNode.cmp Cmp
+DeviceRegisterRequest.provider Provider
+DeviceRegisterRequest.platform Platform
+DeviceTopicsUpdate.op Op
+DeviceTopicUpdateRequest.op Op
+UserTopicUpdateRequest.op Op
+UpdatePushStatusRequest.status Status
+MapPublishRequest.key_mode KeyMode

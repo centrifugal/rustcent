@@ -31,9 +31,9 @@
 //!   strings: browsers decode JSON numbers as doubles. [`json`] encodes any
 //!   serde type as a payload, and [`PayloadExt::decode`] decodes one:
 //!   `.data(cent::json(&message)?)`, `publication.data.decode::<Message>()?`.
-//! - **One deadline per call**: [`Config::request_timeout`], or
-//!   [`Client::with_timeout`] and [`Client::with_deadline`]; every timeout is
-//!   [`Error::Timeout`].
+//! - **One deadline per call**: [`Config::request_timeout`], or the call's own
+//!   [`Client::with_timeout`], which replaces it; a [`Client::with_deadline`]
+//!   only shortens it, never extends it. Every timeout is [`Error::Timeout`].
 //! - **Every call returns an error unless it did everything asked.** A
 //!   broadcast or batch in which some parts failed returns
 //!   [`Error::BroadcastFailedChannels`] or [`Error::BatchFailedCommands`],
@@ -75,7 +75,7 @@
 //!
 //! cent implements the [Centrifugo server SDK
 //! specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-//! version 0.2.
+//! version 0.3.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -94,6 +94,7 @@ mod error;
 mod handler;
 #[cfg(feature = "client")]
 mod http_client;
+mod pages;
 mod payload;
 pub mod proxy;
 mod request;
@@ -129,12 +130,15 @@ pub use broadcast::{BroadcastFailedChannelsError, BroadcastResult, ChannelResult
 pub use client::{AutoBatch, Client, Config, EndpointSource, RequestInfo, TokenSource};
 pub use command::Command;
 pub use error::{
-    ApiError, BoxError, CallbackError, DecodeError, Error, HttpError, InvalidConfigError,
+    ApiError, BoxError, DecodeError, Error, FunctionError, HttpError, InvalidConfigError,
     InvalidRequestError, NetworkError, PayloadError, RetryStoppedError, TimeoutError, retryable,
 };
 pub use handler::Handler;
 #[cfg(feature = "client")]
 pub use http_client::{BoxFuture, DefaultHttpClient, HttpClient};
+#[cfg(feature = "client")]
+pub use pages::Pager;
+pub use pages::{HistoryItem, MapStateItem};
 pub use payload::{PayloadExt, json};
 pub use request::Request;
 #[cfg(feature = "client")]

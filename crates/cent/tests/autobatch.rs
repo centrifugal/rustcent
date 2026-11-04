@@ -508,3 +508,50 @@ async fn a_batch_timeout_is_each_calls_own() {
         "{e:?}"
     );
 }
+
+/// A call keeps the deadline it has alone (spec 3.2, 8): one with a deadline
+/// shorter than its batch's reply returns at it, while the batch, lasting
+/// until the latest of its calls' deadlines, goes on for the other.
+#[tokio::test]
+async fn a_batch_outlasts_a_calls_shorter_deadline() {
+    let fake =
+        Fake::new(|r| Answer::After(Duration::from_millis(300), Box::new(ok(&reply_for(r)))));
+    let client = Client::new(
+        cent::Config::new("http://centrifugo.test/api")
+            .http_client(fake.client())
+            .auto_batch(AutoBatch::new(1))
+            .request_timeout(Duration::from_secs(2)),
+    )
+    .unwrap();
+    // Occupy the only slot.
+    let first = tokio::spawn({
+        let c = client.clone();
+        async move { c.publish(publish(0)).await }
+    });
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let batched = tokio::spawn({
+        let c = client.clone();
+        async move { c.publish(publish(1)).await }
+    });
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let start = std::time::Instant::now();
+    let e = client
+        .with_deadline(std::time::Instant::now() + Duration::from_millis(400))
+        .publish(publish(2))
+        .await
+        .unwrap_err();
+    assert!(e.is_timeout(), "{e:?}");
+    assert!(
+        start.elapsed() < Duration::from_millis(550),
+        "{:?}",
+        start.elapsed()
+    );
+    first.await.unwrap().unwrap();
+    assert_eq!(batched.await.unwrap().unwrap().offset, 1);
+    let methods: Vec<String> = fake
+        .requests()
+        .iter()
+        .map(|r| r.api_method.clone())
+        .collect();
+    assert_eq!(methods, ["publish", "batch"]);
+}

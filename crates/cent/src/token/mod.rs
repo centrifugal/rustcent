@@ -26,7 +26,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::Serialize;
 use serde_json::value::RawValue;
 
-pub use api::{ApiClaims, ApiTokens, api};
+pub use api::{ApiClaims, ApiTokenSource, api};
 pub use jwks::jwks;
 pub use key::Key;
 
@@ -132,6 +132,9 @@ pub struct ConnectionClaims {
     /// The connection's client labels: immutable, for metrics, targeted
     /// server API calls and CEL expressions. Centrifugo PRO only.
     pub labels: BTreeMap<String, String>,
+    /// The connection's dictionary compression profile: the `profile` claim,
+    /// overriding the one the client declared. Centrifugo PRO only.
+    pub profile: String,
 }
 
 impl ConnectionClaims {
@@ -153,6 +156,7 @@ impl ConnectionClaims {
             meta: None,
             caps: Vec::new(),
             labels: BTreeMap::new(),
+            profile: String::new(),
         }
     }
 
@@ -246,6 +250,13 @@ impl ConnectionClaims {
             .into_iter()
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
+        self
+    }
+
+    /// Sets [`profile`](Self::profile).
+    #[must_use]
+    pub fn profile(mut self, profile: impl Into<String>) -> Self {
+        self.profile = profile.into();
         self
     }
 }
@@ -577,6 +588,8 @@ struct ConnectionWire<'a> {
     caps: &'a [ChannelsCapability],
     #[serde(skip_serializing_if = "empty_map")]
     labels: &'a BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "empty_str")]
+    profile: &'a str,
 }
 
 #[derive(Serialize)]
@@ -628,6 +641,7 @@ pub fn connection(key: &Key, c: &ConnectionClaims) -> Result<String, TokenError>
             meta: c.meta.as_deref(),
             caps: &c.caps,
             labels: &c.labels,
+            profile: &c.profile,
         },
     )
 }

@@ -2,7 +2,26 @@
 //! Centrifugo's to check: copying its rules here would refuse what a newer
 //! Centrifugo accepts.
 
-use crate::{BroadcastRequest, Error, PublishRequest};
+use crate::{BroadcastRequest, Error, PublishRequest, Request};
+
+/// A generated input message: the path of the first field the proto marks
+/// "Required." which has no value - unset or empty, the same on the wire -
+/// such as `limit_strategy.rate_limit.policies[0].rate` (spec 3.3, 3.5).
+pub(crate) trait Required {
+    fn missing(&self) -> Option<String>;
+}
+
+/// Fails, naming its path, when a required field of `r` has no value: a
+/// constructor makes the caller pass it, but `new("")` passes it empty.
+pub(crate) fn required<R: Request + Required>(r: &R) -> Result<(), Error> {
+    match r.missing() {
+        Some(path) => Err(Error::invalid_request(
+            R::METHOD,
+            format!("{path} is required"),
+        )),
+        None => Ok(()),
+    }
+}
 
 pub(crate) fn publish(r: &PublishRequest) -> Result<(), Error> {
     if r.channel.is_empty() {

@@ -51,9 +51,15 @@ pub(crate) fn run(root: &Path, check: bool, accept_required: bool) -> Result<(),
     rust_type_names(&mut api);
     rust_type_names(&mut proxy);
 
+    let api_pins = Pins::parse("xtask/constants_api.txt", &read("xtask/constants_api.txt")?)?;
+    let proxy_pins = Pins::parse(
+        "xtask/constants_proxy.txt",
+        &read("xtask/constants_proxy.txt")?,
+    )?;
+
     let mut required = Reviewed::default();
-    let api_src = generate_api(&api, &mut required)?;
-    let proxy_src = generate_proxy(&proxy)?;
+    let api_src = generate_api(&api, &mut required, &api_pins)?;
+    let proxy_src = generate_proxy(&proxy, &proxy_pins)?;
     let test_src = generate_methods_test(&api)?;
     check_required(root, &required, accept_required)?;
 
@@ -204,9 +210,15 @@ fn rustfmt(src: &str) -> Result<String, String> {
 
 /// How a message is used, which decides what is generated for it.
 #[derive(Clone, Copy)]
-struct Usage {
+struct Usage<'a> {
     /// Built by applications and sent: it gets `new` and setters.
     input: bool,
+    /// The constants of the fields listing their values.
+    groups: &'a [ConstGroup],
+    /// In the API, the messages generated: a field holding one which is not
+    /// a presence wrapper is not sent when empty (spec 2). The proxy's
+    /// results keep an empty message, which answers Centrifugo.
+    api: Option<&'a HashSet<String>>,
 }
 
 /// A message holding a single `value` field, like `BoolValue`: tri-state,
@@ -392,6 +404,158 @@ fn is_required(f: &Field) -> bool {
     REQUIRED.is_match(&f.doc.join(" "))
 }
 
+/// A required field whose comment gives its empty value a meaning, after
+/// "Required." - `"" detaches the devices`, `An empty map clears it.` (spec
+/// 3.3). Empty is a value of it: `new("")` sends it empty, as asked.
+pub(crate) fn empty_has_meaning(f: &Field) -> bool {
+    let doc = f.doc.join(" ");
+    doc.split_once("Required.")
+        .is_some_and(|(_, after)| after.contains("\"\"") || after.to_lowercase().contains("empty"))
+}
+
+/// A presence wrapper (spec 2): a message Centrifugo reads by whether it is
+/// there - a `*Value` holding `value`, or one whose only field's empty value
+/// has a meaning, as the updates of `device_update`. A field holding one is
+/// an `Option`, sent whenever it is `Some`, even empty.
+pub(crate) fn is_presence_wrapper(m: &Message) -> bool {
+    m.fields.len() == 1
+        && ((m.name.ends_with("Value") && m.fields[0].name == "value")
+            || (is_required(&m.fields[0]) && empty_has_meaning(&m.fields[0])))
+}
+
+/// A field holding a generated message which is not a presence wrapper: not
+/// sent when it is `None`, nor when it is empty - Centrifugo reads some
+/// messages by whether they are there, and refuses `"limit_strategy": {}`
+/// (spec 2).
+fn drops_when_empty(s: &Schema, f: &Field, emitted: &HashSet<String>) -> bool {
+    f.map_key.is_none()
+        && !f.repeated
+        && emitted.contains(&f.typ)
+        && s.message(&f.typ).is_some_and(|m| !is_presence_wrapper(m))
+}
+
+/// The condition, on `self.<field>`, that a field holds its zero value: what
+/// is not sent (spec 2).
+fn empty_cond(s: &Schema, f: &Field, emitted: &HashSet<String>) -> String {
+    let x = format!("self.{}", ident(&f.name));
+    if f.map_key.is_some() || f.repeated {
+        format!("{x}.is_empty()")
+    } else if drops_when_empty(s, f, emitted) {
+        format!("crate::wire::absent(&{x})")
+    } else if f.typ == "bytes" || s.message(&f.typ).is_some() {
+        format!("{x}.is_none()")
+    } else {
+        format!("crate::wire::is_default(&{x})")
+    }
+}
+
+/// Writes `crate::wire::Empty` for a message: whether every field is its
+/// zero value, so that it is sent as `{}` - which, but for a presence
+/// wrapper, is not sent at all.
+fn emit_empty(w: &mut Writer, s: &Schema, m: &Message, emitted: &HashSet<String>) {
+    let conds: Vec<String> = m.fields.iter().map(|f| empty_cond(s, f, emitted)).collect();
+    w.line("");
+    w.line(&format!("impl crate::wire::Empty for {} {{", m.name));
+    w.line("fn is_empty(&self) -> bool {");
+    if conds.is_empty() {
+        w.line("true");
+    } else {
+        w.line(&conds.join(" && "));
+    }
+    w.line("}");
+    w.line("}");
+}
+
+/// The input messages with something to check before sending: a required
+/// field whose empty value has no meaning, or a nested message with one.
+fn checked_messages(
+    s: &Schema,
+    inputs: &HashSet<String>,
+    emitted: &HashSet<String>,
+) -> HashSet<String> {
+    let mut needs: HashSet<String> = HashSet::new();
+    loop {
+        let before = needs.len();
+        for m in &s.messages {
+            if !inputs.contains(&m.name) || !emitted.contains(&m.name) || needs.contains(&m.name) {
+                continue;
+            }
+            if m.fields
+                .iter()
+                .any(|f| (is_required(f) && !empty_has_meaning(f)) || needs.contains(&f.typ))
+            {
+                needs.insert(m.name.clone());
+            }
+        }
+        if needs.len() == before {
+            return needs;
+        }
+    }
+}
+
+/// Writes `crate::validate::Required` for an input message: the path of the
+/// first field marked "Required." left without a value - unset, or given
+/// empty, which on the wire is the same - and of those of the messages it
+/// holds: a nested one when it is sent, each element of a list (spec 3.3,
+/// 3.5). The fields whose empty value has a meaning are not checked.
+fn emit_required(
+    w: &mut Writer,
+    s: &Schema,
+    m: &Message,
+    emitted: &HashSet<String>,
+    checked: &HashSet<String>,
+) -> Result<(), String> {
+    w.line("");
+    w.line(&format!("impl crate::validate::Required for {} {{", m.name));
+    w.line("fn missing(&self) -> Option<String> {");
+    for f in &m.fields {
+        let x = format!("self.{}", ident(&f.name));
+        if is_required(f) && !empty_has_meaning(f) {
+            w.line(&format!("if {} {{", empty_cond(s, f, emitted)));
+            w.line(&format!("return Some({:?}.into());", f.name));
+            w.line("}");
+        }
+        if !checked.contains(&f.typ) {
+            continue;
+        }
+        if f.map_key.is_some() {
+            w.line(&format!("for (k, v) in &{x} {{"));
+            w.line("if let Some(p) = crate::validate::Required::missing(v) {");
+            w.line(&format!(
+                "return Some(format!(\"{}[{{k:?}}].{{p}}\"));",
+                f.name
+            ));
+            w.line("}");
+            w.line("}");
+        } else if f.repeated {
+            w.line(&format!("for (i, v) in {x}.iter().enumerate() {{"));
+            w.line("if let Some(p) = crate::validate::Required::missing(v) {");
+            w.line(&format!(
+                "return Some(format!(\"{}[{{i}}].{{p}}\"));",
+                f.name
+            ));
+            w.line("}");
+            w.line("}");
+        } else if drops_when_empty(s, f, emitted) {
+            // Checked when sent: set and not empty.
+            w.line(&format!(
+                "if let Some(p) = {x}.as_ref().filter(|v| !crate::wire::Empty::is_empty(*v)).and_then(crate::validate::Required::missing) {{"
+            ));
+            w.line(&format!("return Some(format!(\"{}.{{p}}\"));", f.name));
+            w.line("}");
+        } else {
+            return Err(format!(
+                "{}.{}: a nested message of this kind is not checked",
+                m.name, f.name
+            ));
+        }
+    }
+    w.line("None");
+    w.line("}");
+    w.line("}");
+    Ok(())
+}
+
 /// The messages reachable from `roots` through their fields.
 fn closure<'a>(s: &Schema, roots: impl IntoIterator<Item = &'a str>) -> HashSet<String> {
     let mut seen = HashSet::new();
@@ -512,7 +676,7 @@ fn emit_message(
     w: &mut Writer,
     s: &Schema,
     m: &Message,
-    usage: Usage,
+    usage: Usage<'_>,
     own_constructor: bool,
     doc_fallback: &str,
     required: &mut Reviewed,
@@ -544,11 +708,36 @@ fn emit_message(
     w.line(&format!("pub struct {} {{", m.name));
     for f in &m.fields {
         let (typ, attr) = field_type(s, f)?;
+        let drops = usage.api.is_some_and(|e| drops_when_empty(s, f, e));
+        let attr = if drops {
+            r#"#[serde(default, skip_serializing_if = "crate::wire::absent")]"#
+        } else {
+            attr
+        };
         let doc = field_doc(f);
         if doc.is_empty() {
             w.line(&format!("/// The `{}` field.", f.name));
         } else {
             w.doc(&doc);
+        }
+        if let Some(line) = constants_doc(usage.groups, &m.name, &f.name) {
+            w.line("///");
+            w.line(&format!("/// {line}"));
+        }
+        if usage.input
+            && wrapper_scalar(s, &f.typ).is_none()
+            && s.message(&f.typ).is_some_and(is_presence_wrapper)
+        {
+            w.line("///");
+            w.line("/// Sent whenever it is `Some`, even empty: an empty one has a meaning of");
+            w.line(&format!(
+                "/// its own - see [`{}`] - and `None` leaves things as they are.",
+                f.typ
+            ));
+        }
+        if usage.input && drops {
+            w.line("///");
+            w.line("/// Not sent when it is empty, as when it is `None`.");
         }
         w.line(attr);
         w.line(&format!("pub {}: {typ},", ident(&f.name)));
@@ -647,6 +836,238 @@ fn emit_message(
 }
 
 // ---------------------------------------------------------------------------
+// Constants for the values a field lists
+
+/// The values a field's comment lists in the sentence `One of: add, remove,
+/// set.`, or none without one (spec 3.3). A malformed sentence fails the
+/// generation rather than being skipped.
+pub(crate) fn listed_values(doc: &[String]) -> Result<Vec<String>, String> {
+    static VALUE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_]*$").expect("regex"));
+    let joined = doc.join(" ");
+    let Some((_, after)) = joined.split_once("One of:") else {
+        return Ok(Vec::new());
+    };
+    let Some((list, _)) = after.split_once('.') else {
+        return Err(r#"the values after "One of:" must end with a period"#.into());
+    };
+    let mut values: Vec<String> = Vec::new();
+    for v in list.split(',').map(str::trim) {
+        if !VALUE.is_match(v) {
+            return Err(format!(
+                "{v:?} is not a value: lowercase letters, digits and underscores"
+            ));
+        }
+        if values.iter().any(|x| x == v) {
+            return Err(format!("value {v:?} listed twice"));
+        }
+        values.push(v.to_owned());
+    }
+    Ok(values)
+}
+
+/// The pinned names of the constants (spec 3.3), as `xtask/constants_*.txt`
+/// lists them: a selector - `Message.field`, or `*.field` for the field in
+/// every message - and the name the spec gives it.
+#[derive(Debug)]
+pub(crate) struct Pins {
+    file: String,
+    pins: Vec<(String, String, String)>,
+}
+
+impl Pins {
+    /// Parses a pin list: a line per pin, `#` starting a comment line.
+    pub(crate) fn parse(file: &str, src: &str) -> Result<Self, String> {
+        let mut pins = Vec::new();
+        for (n, line) in src.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let bad = || format!("{file}:{}: want \"Message.field Name\": {line:?}", n + 1);
+            let mut words = line.split_whitespace();
+            let (Some(selector), Some(name), None) = (words.next(), words.next(), words.next())
+            else {
+                return Err(bad());
+            };
+            let (message, field) = selector.split_once('.').ok_or_else(bad)?;
+            if message.is_empty()
+                || field.is_empty()
+                || !name.starts_with(|c: char| c.is_ascii_uppercase())
+                || !name.chars().all(|c| c.is_ascii_alphanumeric())
+            {
+                return Err(bad());
+            }
+            pins.push((message.to_owned(), field.to_owned(), name.to_owned()));
+        }
+        Ok(Self {
+            file: file.to_owned(),
+            pins,
+        })
+    }
+
+    /// The pin naming `message.field`: its own, before a `*.field` one.
+    fn find(&self, message: &str, field: &str) -> Option<usize> {
+        let exact = self
+            .pins
+            .iter()
+            .position(|(m, f, _)| m == message && f == field);
+        exact.or_else(|| {
+            self.pins
+                .iter()
+                .position(|(m, f, _)| m == "*" && f == field)
+        })
+    }
+}
+
+/// The constants of the string fields with listed values given one name by
+/// the pins (spec 3.3): the name, the values, and the fields listing them.
+#[derive(Debug)]
+pub(crate) struct ConstGroup {
+    /// The name the spec pins, as `FilterNodeOp`.
+    pub(crate) name: String,
+    pub(crate) values: Vec<String>,
+    /// The fields with these constants, as (message, field).
+    pub(crate) fields: Vec<(String, String)>,
+}
+
+impl ConstGroup {
+    /// The constant of one of the group's values: `OP_ADD` for `Op`'s `add`,
+    /// `FILTER_NODE_OP_AND` for `FilterNodeOp`'s `and`.
+    pub(crate) fn const_name(&self, value: &str) -> String {
+        format!("{}_{}", screaming(&self.name), value.to_uppercase())
+    }
+}
+
+/// `FilterNode` as `FILTER_NODE`.
+fn screaming(camel: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in camel.chars().enumerate() {
+        if c.is_uppercase() && i > 0 {
+            out.push('_');
+        }
+        out.push(c.to_ascii_uppercase());
+    }
+    out
+}
+
+/// The fields with listed values of the messages `include` accepts, grouped
+/// by the names `pins` gives them, in the proto's order (spec 3.3). It fails
+/// on a field with a "One of:" sentence no pin names, a pin naming no field,
+/// and one name over different values, so that a name never changes because
+/// an unrelated message appeared: a person names a new field in the spec's
+/// table, and in the list.
+pub(crate) fn const_groups(
+    s: &Schema,
+    include: impl Fn(&str) -> bool,
+    pins: &Pins,
+) -> Result<Vec<ConstGroup>, String> {
+    let mut groups: Vec<ConstGroup> = Vec::new();
+    let mut used = vec![false; pins.pins.len()];
+    for m in s.messages.iter().filter(|m| include(&m.name)) {
+        for f in &m.fields {
+            let values =
+                listed_values(&f.doc).map_err(|e| format!("{}.{}: {e}", m.name, f.name))?;
+            if values.is_empty() {
+                continue;
+            }
+            if f.typ != "string" {
+                return Err(format!(
+                    "{}.{} lists values but is not a string",
+                    m.name, f.name
+                ));
+            }
+            let Some(pin) = pins.find(&m.name, &f.name) else {
+                return Err(format!(
+                    "{}.{} has a \"One of:\" sentence but no name in {}: name it in the spec's table (section 3.3), for every SDK, and here",
+                    m.name, f.name, pins.file
+                ));
+            };
+            used[pin] = true;
+            let name = &pins.pins[pin].2;
+            match groups.iter_mut().find(|g| g.name == *name) {
+                Some(g) if g.values != values => {
+                    return Err(format!(
+                        "{name} names {:?} of {} and {values:?} of {}.{}: one name over different values",
+                        g.values,
+                        g.fields
+                            .iter()
+                            .map(|(m, f)| format!("{m}.{f}"))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        m.name,
+                        f.name
+                    ));
+                }
+                Some(g) => g.fields.push((m.name.clone(), f.name.clone())),
+                None => groups.push(ConstGroup {
+                    name: name.clone(),
+                    values,
+                    fields: vec![(m.name.clone(), f.name.clone())],
+                }),
+            }
+        }
+    }
+    let unused: Vec<String> = pins
+        .pins
+        .iter()
+        .zip(&used)
+        .filter(|(_, used)| !**used)
+        .map(|((m, f, n), _)| format!("{m}.{f} {n}"))
+        .collect();
+    if !unused.is_empty() {
+        return Err(format!(
+            "{} pins names no field with a \"One of:\" sentence uses: {}",
+            pins.file,
+            unused.join(", ")
+        ));
+    }
+    Ok(groups)
+}
+
+/// Joins words as a sentence does: "a, b and c".
+fn join_and(words: &[String]) -> String {
+    match words {
+        [] => String::new(),
+        [one] => one.clone(),
+        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
+}
+
+/// Writes a constant per listed value.
+fn emit_constants(w: &mut Writer, groups: &[ConstGroup]) {
+    for g in groups {
+        let fields: Vec<String> = g
+            .fields
+            .iter()
+            .map(|(m, f)| format!("`{f}` of [`{m}`]"))
+            .collect();
+        for v in &g.values {
+            w.line("");
+            w.line(&format!(
+                "/// `{v:?}`, a value of {}. The field is a string: a value",
+                join_and(&fields)
+            ));
+            w.line("/// Centrifugo accepts which no constant names can still be sent.");
+            w.line(&format!("pub const {}: &str = {v:?};", g.const_name(v)));
+        }
+    }
+}
+
+/// The documentation line naming a field's constants, if it has any.
+fn constants_doc(groups: &[ConstGroup], message: &str, field: &str) -> Option<String> {
+    let g = groups
+        .iter()
+        .find(|g| g.fields.iter().any(|(m, f)| m == message && f == field))?;
+    let names: Vec<String> = g
+        .values
+        .iter()
+        .map(|v| format!("[`{}`]", g.const_name(v)))
+        .collect();
+    Some(format!("The values have constants: {}.", names.join(", ")))
+}
+
+// ---------------------------------------------------------------------------
 // The API
 
 /// An API method, as the batch `Command` and `Reply` messages declare it: the
@@ -714,7 +1135,7 @@ fn method_doc(c: &ApiCommand) -> Vec<String> {
 }
 
 #[allow(clippy::too_many_lines)] // one block per generated part, in order
-fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
+fn generate_api(s: &Schema, required: &mut Reviewed, pins: &Pins) -> Result<String, String> {
     let cmds = commands(s)?;
     let envelopes: HashSet<&str> = s.methods.iter().map(|m| m.response.as_str()).collect();
     let omitted: HashSet<String> = {
@@ -735,6 +1156,16 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
             || wrapper_scalar(s, name).is_some()
     };
     let inputs = closure(s, cmds.iter().map(|c| c.request.as_str()));
+    let groups =
+        const_groups(s, |name| !skip(name), pins).map_err(|e| format!("api.proto: {e}"))?;
+    let emitted: HashSet<String> = s
+        .messages
+        .iter()
+        .filter(|m| !skip(&m.name))
+        .map(|m| m.name.clone())
+        .collect();
+    let checked = checked_messages(s, &inputs, &emitted);
+    let requests: HashSet<&str> = cmds.iter().map(|c| c.request.as_str()).collect();
 
     let mut w = Writer { out: String::new() };
     w.line("// Code generated by `cargo xtask generate` from proto/api.proto. DO NOT EDIT.");
@@ -755,12 +1186,19 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
             m,
             Usage {
                 input: inputs.contains(&m.name),
+                groups: &groups,
+                api: Some(&emitted),
             },
             false,
             &fallback,
             required,
         )?;
+        emit_empty(&mut w, s, m, &emitted);
+        if checked.contains(&m.name) || requests.contains(m.name.as_str()) {
+            emit_required(&mut w, s, m, &emitted, &checked)?;
+        }
     }
+    emit_constants(&mut w, &groups);
 
     // Every request knows its method, and the rules the client checks.
     for c in &cmds {
@@ -773,12 +1211,15 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
         w.line(&format!("impl crate::Request for {} {{", c.request));
         w.line(&format!("const METHOD: &'static str = {:?};", c.method));
         w.line(&format!("const PRO_ONLY: bool = {};", c.pro_only));
+        w.line("");
+        w.line("fn validate(&self) -> Result<(), crate::Error> {");
         if VALIDATED.contains(&c.method.as_str()) {
-            w.line("");
-            w.line("fn validate(&self) -> Result<(), crate::Error> {");
+            w.line("crate::validate::required(self)?;");
             w.line(&format!("crate::validate::{}(self)", c.method));
-            w.line("}");
+        } else {
+            w.line("crate::validate::required(self)");
         }
+        w.line("}");
         w.line("}");
     }
 
@@ -904,7 +1345,7 @@ fn generate_api(s: &Schema, required: &mut Reviewed) -> Result<String, String> {
 // ---------------------------------------------------------------------------
 // The proxy
 
-fn generate_proxy(s: &Schema) -> Result<String, String> {
+fn generate_proxy(s: &Schema, pins: &Pins) -> Result<String, String> {
     let http: Vec<_> = s.methods.iter().filter(|m| !m.streaming).collect();
     // Every message an HTTP proxy method uses; those of streaming methods,
     // which only GRPC can call, are left out.
@@ -921,6 +1362,12 @@ fn generate_proxy(s: &Schema) -> Result<String, String> {
         .flat_map(|r| r.fields.iter().map(|f| f.typ.as_str()))
         .collect();
     let inputs = closure(s, results);
+    let groups = const_groups(
+        s,
+        |name| used.contains(name) && wrapper_scalar(s, name).is_none(),
+        pins,
+    )
+    .map_err(|e| format!("proxy.proto: {e}"))?;
 
     let mut w = Writer { out: String::new() };
     w.line("// Code generated by `cargo xtask generate` from proto/proxy.proto. DO NOT EDIT.");
@@ -942,12 +1389,15 @@ fn generate_proxy(s: &Schema) -> Result<String, String> {
             m,
             Usage {
                 input: inputs.contains(&m.name),
+                groups: &groups,
+                api: None,
             },
             own,
             &fallback,
             &mut unused,
         )?;
     }
+    emit_constants(&mut w, &groups);
     if !unused.fields.is_empty() {
         let list: Vec<_> = unused.fields.into_iter().collect();
         return Err(format!(
@@ -1001,14 +1451,55 @@ fn constructor(s: &Schema, name: &str) -> Result<String, String> {
     Ok(format!("{name}::new({})", args.join(", ")))
 }
 
-/// A request for a command: its constructor, with data where the client
-/// requires it.
-fn request_expr(s: &Schema, c: &ApiCommand) -> Result<String, String> {
-    let mut e = constructor(s, &c.request)?;
-    if VALIDATED.contains(&c.method.as_str()) {
-        e.push_str(".data(raw(\"{}\"))");
+/// `Message::new(...)` with every field set, nested messages included, so
+/// that the test sends every field of every request (spec 15). A message
+/// holding itself, as `FilterNode`, is set once and then only constructed.
+fn filled(s: &Schema, name: &str, visiting: &mut Vec<String>) -> Result<String, String> {
+    if visiting.iter().any(|v| v == name) {
+        return constructor(s, name);
     }
-    Ok(e)
+    visiting.push(name.to_owned());
+    let m = s
+        .message(name)
+        .ok_or_else(|| format!("no message {name}"))?;
+    let mut args = Vec::new();
+    let mut setters = String::new();
+    for f in &m.fields {
+        let one = |visiting: &mut Vec<String>| -> Result<String, String> {
+            if s.message(&f.typ).is_some() && wrapper_scalar(s, &f.typ).is_none() {
+                filled(s, &f.typ, visiting)
+            } else {
+                dummy(
+                    s,
+                    &Field {
+                        repeated: false,
+                        map_key: None,
+                        ..f.clone()
+                    },
+                )
+            }
+        };
+        let v = one(visiting)?;
+        let v = if f.map_key.is_some() {
+            format!("[(\"k\", {v})]")
+        } else if f.repeated {
+            format!("[{v}]")
+        } else {
+            v
+        };
+        if is_required(f) {
+            args.push(v);
+        } else {
+            let _ = write!(setters, ".{}({v})", ident(&f.name));
+        }
+    }
+    visiting.pop();
+    Ok(format!("{name}::new({}){setters}", args.join(", ")))
+}
+
+/// A request for a command, every field set.
+fn request_expr(s: &Schema, c: &ApiCommand) -> Result<String, String> {
+    filled(s, &c.request, &mut Vec::new())
 }
 
 #[allow(clippy::too_many_lines)] // one block per test, in order
@@ -1120,4 +1611,219 @@ fn generate_methods_test(s: &Schema) -> Result<String, String> {
     w.line("assert_eq!(paths(&fake), want);");
     w.line("}");
     Ok(w.out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn api() -> Schema {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../proto/api.proto");
+        let src = std::fs::read_to_string(path).expect("api.proto");
+        proto::parse(&src, "api.proto").expect("api.proto parses")
+    }
+
+    /// The presence wrappers and the required fields whose empty value has a
+    /// meaning, as the generator finds them in the comments (spec 2, 3.3): a
+    /// changed comment fails this test, to be reviewed.
+    #[test]
+    fn presence_from_comments() {
+        let s = api();
+        let wrappers: Vec<&str> = s
+            .messages
+            .iter()
+            .filter(|m| is_presence_wrapper(m))
+            .map(|m| m.name.as_str())
+            .collect();
+        assert_eq!(
+            wrappers,
+            [
+                "BoolValue",
+                "Int32Value",
+                "DeviceUserUpdate",
+                "DeviceTimezoneUpdate",
+                "DeviceLocaleUpdate",
+                "DeviceMetaUpdate"
+            ]
+        );
+        let empty: Vec<String> = s
+            .messages
+            .iter()
+            .flat_map(|m| {
+                m.fields
+                    .iter()
+                    .filter(|f| is_required(f) && empty_has_meaning(f))
+                    .map(move |f| format!("{}.{}", m.name, f.name))
+            })
+            .collect();
+        assert_eq!(
+            empty,
+            [
+                "InvalidateUserTokensRequest.user",
+                "DeviceUserUpdate.user",
+                "DeviceTimezoneUpdate.timezone",
+                "DeviceLocaleUpdate.locale",
+                "DeviceMetaUpdate.meta",
+                "UserTopicUpdateRequest.user",
+            ]
+        );
+    }
+
+    #[test]
+    fn listed_values_parse() {
+        let doc = |lines: &[&str]| lines.iter().map(|l| (*l).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            listed_values(&doc(&[
+                "op is the operation. Required. One of: add, remove, set."
+            ])),
+            Ok(vec!["add".into(), "remove".into(), "set".into()])
+        );
+        assert_eq!(
+            listed_values(&doc(&[
+                "provider is the provider. Required. One of: fcm,",
+                "hms, apns, webpush."
+            ])),
+            Ok(vec![
+                "fcm".into(),
+                "hms".into(),
+                "apns".into(),
+                "webpush".into()
+            ])
+        );
+        assert_eq!(
+            listed_values(&doc(&["channel is the channel. Required."])),
+            Ok(vec![])
+        );
+        assert!(listed_values(&doc(&["One of: a, b"])).is_err());
+        assert!(listed_values(&doc(&["One of: A, b."])).is_err());
+        assert!(listed_values(&doc(&["One of: a, a."])).is_err());
+        assert!(listed_values(&doc(&["One of: a,, b."])).is_err());
+    }
+
+    fn names(src: &str, pins: &str) -> Result<Vec<String>, String> {
+        let s = proto::parse(src, "test.proto")?;
+        let pins = Pins::parse("pins.txt", pins)?;
+        let groups = const_groups(&s, |_| true, &pins)?;
+        Ok(groups
+            .iter()
+            .flat_map(|g| g.values.iter().map(|v| g.const_name(v)))
+            .collect())
+    }
+
+    /// A constant is named by its pin, not by counting messages: a field's
+    /// own pin before a `*.field` one, one name over the fields listing the
+    /// same values (spec 3.3).
+    #[test]
+    fn constants_are_named_by_their_pins() {
+        let src = "message A {\n  string op = 1; // One of: add, remove.\n}\n\
+             message B {\n  string op = 1; // One of: add, remove.\n  string encoding = 2; // One of: json.\n}\n\
+             message FilterNode {\n  string op = 1; // One of: and, or.\n  string encoding = 2; // One of: json.\n}\n";
+        let pins =
+            "# a comment\nA.op Op\nB.op Op\nFilterNode.op FilterNodeOp\n*.encoding Encoding\n";
+        assert_eq!(
+            names(src, pins).unwrap(),
+            [
+                "OP_ADD",
+                "OP_REMOVE",
+                "ENCODING_JSON",
+                "FILTER_NODE_OP_AND",
+                "FILTER_NODE_OP_OR"
+            ]
+        );
+    }
+
+    /// The generation fails on a field the pins lack, a pin no field uses,
+    /// one name over different values, and a malformed line.
+    #[test]
+    fn the_pins_are_checked() {
+        let src = "message A {\n  string op = 1; // One of: add.\n}\n\
+             message C {\n  string op = 1; // One of: and.\n}\n";
+        let missing = names(src, "A.op Op\n").unwrap_err();
+        assert!(
+            missing.contains("C.op") && missing.contains("no name"),
+            "{missing}"
+        );
+        let unused = names(src, "A.op Op\nC.op COp\nD.mode Mode\n").unwrap_err();
+        assert!(unused.contains("D.mode Mode"), "{unused}");
+        let clash = names(src, "*.op Op\n").unwrap_err();
+        assert!(clash.contains("different values"), "{clash}");
+        for bad in [
+            "A.op",
+            "A.op Op extra",
+            "Aop Op",
+            "A.op op",
+            ".op Op",
+            "A.op O_p",
+        ] {
+            assert!(Pins::parse("pins.txt", bad).is_err(), "{bad:?}");
+        }
+    }
+
+    /// The lists agree with the protos, and give exactly the names of the
+    /// spec's table (section 3.3).
+    #[test]
+    fn the_lists_agree_with_the_protos() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let read = |p: &str| std::fs::read_to_string(root.join(p)).expect(p);
+        for (proto_file, list, want) in [
+            (
+                "proto/api.proto",
+                "xtask/constants_api.txt",
+                &[
+                    "Cmp",
+                    "FilterNodeOp",
+                    "KeyMode",
+                    "Op",
+                    "Platform",
+                    "Provider",
+                    "Status",
+                ][..],
+            ),
+            (
+                "proto/proxy.proto",
+                "xtask/constants_proxy.txt",
+                &[
+                    "Allow",
+                    "CapabilityMatch",
+                    "ChannelEventType",
+                    "Cmp",
+                    "Encoding",
+                    "FilterNodeOp",
+                    "KeyMode",
+                    "Protocol",
+                ][..],
+            ),
+        ] {
+            let s = proto::parse(&read(proto_file), proto_file).unwrap();
+            let pins = Pins::parse(list, &read(list)).unwrap();
+            let groups = const_groups(&s, |_| true, &pins).unwrap();
+            let names: BTreeSet<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+            assert_eq!(names.into_iter().collect::<Vec<_>>(), want, "{list}");
+        }
+    }
+
+    #[test]
+    fn required_is_unconditional() {
+        let field = |doc: &str| Field {
+            name: "f".into(),
+            typ: "string".into(),
+            repeated: false,
+            map_key: None,
+            doc: vec![doc.into()],
+        };
+        assert!(is_required(&field("f is it. Required.")));
+        assert!(!is_required(&field("f is it. Required unless g is set.")));
+        assert!(!is_required(&field(
+            "f is it. Required when the request sets g."
+        )));
+        assert!(empty_has_meaning(&field(
+            "f is it. Required. \"\" clears it."
+        )));
+        assert!(empty_has_meaning(&field(
+            "f is it. Required. An empty map clears it."
+        )));
+        assert!(!empty_has_meaning(&field(
+            "f is it, empty by default. Required."
+        )));
+    }
 }

@@ -22,6 +22,7 @@ cargo add cent
 | `ApiError::temporary`, code 111 (too many requests), refused requests reported as such rather than as internal errors | Centrifugo v6.10.0 or newer |
 | Ed25519 tokens verified without JWKS, by `client.token.ed25519_public_key` | Centrifugo v6.10.2 or newer |
 | Methods marked "Centrifugo PRO only" | Centrifugo PRO v6 |
+| `proxy::ConnectResult::profile` | Centrifugo PRO newer than v6.10.2 |
 
 | Feature | Default | What |
 |---|---|---|
@@ -32,7 +33,7 @@ cargo add cent
 
 cent implements the [Centrifugo server SDK
 specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-version 0.2, whose reference implementation is
+version 0.3, whose reference implementation is
 [gocent](https://github.com/centrifugal/gocent).
 
 ## Example
@@ -56,6 +57,50 @@ result: a struct generated from Centrifugo's `api.proto`, with its
 documentation. A request's `new` takes the fields Centrifugo requires, and a
 method per field sets the others. Create the client once and share it: it is
 cheap to clone, and safe for concurrent use.
+
+A field with a fixed set of values has a constant per value - `OP_ADD`,
+`PROVIDER_FCM`, `PLATFORM_IOS`, and `cent::proxy::ENCODING_BINARY` in the
+proxy - generated from the protos and named as the spec pins them, the same
+field the same in both: `FILTER_NODE_OP_AND`, `proxy::FILTER_NODE_OP_AND`.
+The fields stay strings: a value Centrifugo accepts which no constant names
+can still be sent.
+
+## Pages and stream positions
+
+The paged methods - `history`, `device_list`, `device_topic_list`,
+`user_topic_list` and `map_read_state` - each have an `*_all` method reading
+every item, a page at a time: a page is read when the iteration reaches it,
+and an error ends the iteration. Every result holding a stream position -
+`publish`, `history`, `map_publish`, `map_remove`, `map_read_state` and
+`map_read_stream` - gives its `position()`, from which to read on:
+
+```rust,no_run
+# async fn run(client: cent::Client, data: Box<cent::RawValue>) -> Result<(), cent::Error> {
+use cent::{HistoryRequest, PublishRequest};
+
+let published = client.publish(PublishRequest::new("news").data(data)).await?;
+// Later: what came after that publication.
+let mut after = client.history_all(HistoryRequest::new("news").limit(100).since(published.position()));
+let mut last = None;
+while let Some(item) = after.next().await {
+    let item = item?; // a HistoryItem, which derefs to the Publication
+    println!("{}", item.offset);
+    last = Some(item.position()); // to resume from later
+}
+# Ok(()) }
+```
+
+`history_all` yields each publication with its position, a `HistoryItem`, and
+`map_read_state_all` each entry with the position of the state it was read
+at, a `MapStateItem` whose `state` `map_read_stream` follows the map from.
+Both deref to the publication or entry they carry.
+
+The blocking client's `*_all` methods return an `Iterator`. Items added or
+removed while iterating may or may not be seen. A position whose epoch is no
+longer the stream's fails with `ApiError::UNRECOVERABLE_POSITION`: the stream
+was reset, and reading from its start is the only way on. So
+`map_read_state_all` reads every page after the first at the first one's
+revision: a map reset between pages fails so, rather than mixing two states.
 
 ## Payloads
 
@@ -91,7 +136,8 @@ larger integers silently.
 ## Timeouts
 
 Each call is bounded by one deadline: the client's `request_timeout`, ten
-seconds by default, or one of its own:
+seconds by default, or the call's own timeout, `with_timeout`, which replaces
+it for that call, longer or shorter:
 
 ```rust,no_run
 # async fn run(client: cent::Client) -> Result<(), cent::Error> {
@@ -104,10 +150,31 @@ The deadline bounds the whole call - the endpoint and token functions,
 connecting, the reply read, a reply trickling in included. However a call
 times out, the error is `Error::Timeout`. `with_deadline` gives several calls
 one deadline, such as the attempts of a retry loop and the waits between
-them. A timeout around a call's future, `tokio::time::timeout`, ends it too.
+them. A deadline only shortens a call, never extends it: each call still
+times out after `request_timeout`, or its own `with_timeout`, when that
+comes first - so a handle with a deadline minutes away still gives up on a
+stuck Centrifugo in time. To let calls take longer, raise `request_timeout`
+or give them a timeout of their own. A timeout cannot be turned off: unset is
+the default, and a zero `request_timeout`, `with_timeout` or `attempt_timeout`
+is refused, with `Error::InvalidConfig` or `Error::InvalidRequest`, and so is
+a zero `page_timeout`. A timeout around a call's future,
+`tokio::time::timeout`, ends it too.
 
-`broadcast_with_retry` makes several requests in one call: its deadline bounds
-them all, waits between them included, and `attempt_timeout` each one.
+`broadcast_with_retry` makes several requests in one call. Each attempt times
+out after `attempt_timeout`, which replaces `request_timeout` for it, longer
+or shorter. The call's deadline - `with_timeout` from its start, or
+`with_deadline` - bounds them all, waits between them included.
+
+The `*_all` iterators make a request per page and take no timeout as a
+whole: an iteration lasts as long as your loop, so a handle's `with_timeout`
+does not apply to it. `page_timeout` bounds each page instead, replacing
+`request_timeout` for it, as `attempt_timeout` does for an attempt; zero is
+refused. A `with_deadline` the handle holds still ends the iteration.
+
+With automatic batching a call keeps the deadline it has alone. The batch
+request carrying it lasts until the latest of its calls' deadlines, and at
+least `request_timeout` from when it is sent, so it may outlast a call's: that
+call returns at its deadline, and the batch goes on for the others.
 
 ## Errors
 
@@ -117,10 +184,10 @@ them all, waits between them included, and `attempt_timeout` each one.
 | `BroadcastFailedChannels`, `BatchFailedCommands` | some parts of a broadcast or batch failed - see below |
 | `Http` | the request did not reach the API method: `status`, `body`, `headers`; `err.is_unauthorized()` for refused credentials |
 | `Decode` | the reply was not Centrifugo's - usually `api_endpoint` points elsewhere |
-| `InvalidRequest` | the client could tell the request is wrong and did not send it |
-| `InvalidConfig` | the client was not created, or is used where it cannot work: the message names the option and the fix |
+| `InvalidRequest` | the client could tell the request is wrong and did not send it: a field the protos mark "Required." without a value (`limit_strategy.rate_limit.policies[0].rate is required`), a payload which is not JSON |
+| `InvalidConfig` | the client refuses to work as configured: it was not created, it is used where it cannot work, or the `with_endpoint_fn` or `bearer_token` function returned an endpoint or token it cannot send; the message names the option and the fix |
 | `Timeout`, `Network`, `Closed` | as their names say |
-| `Callback` | the application's `api_endpoint` or `bearer_token` function failed |
+| `Function` | the application's `with_endpoint_fn` or `bearer_token` function returned an error: its source, the message naming the function |
 
 Centrifugo adds error codes over time: an unknown code is still an
 `Error::Api`, so match the codes you handle and treat the rest by kind.
@@ -286,14 +353,14 @@ it is called for every request, so return a cached token. Leave both unset
 when mutual TLS, set up in your `HttpClient`, or a proxy authenticates
 instead.
 
-To sign the tokens yourself, `token::ApiTokens` issues them and reuses each for
+To sign the tokens yourself, `token::ApiTokenSource` issues them and reuses each for
 half its lifetime:
 
 ```rust,no_run
 # fn run(api_key: cent::token::Key) -> Result<(), cent::Error> {
-use cent::token::{ApiClaims, ApiTokens};
+use cent::token::{ApiClaims, ApiTokenSource};
 
-let tokens = ApiTokens::new(
+let tokens = ApiTokenSource::new(
     api_key, // its own key - never one of the client tokens
     ApiClaims::new().audience("centrifugo-api").scope(["centrifugo:api"]),
 );
@@ -452,7 +519,7 @@ HMAC, RSA, ECDSA or Ed25519 - and `cent::endpoints` serves the endpoints the
 
 ```rust
 use std::time::Duration;
-use cent::endpoints::{self, Unauthorized};
+use cent::endpoints::{self, Forbidden};
 use cent::token::{self, ConnectionClaims, Key};
 
 let key = Key::hmac("secret")?; // client.token.hmac_secret_key
@@ -460,7 +527,7 @@ let connection_token = endpoints::Handlers::new().connection_token(move |parts| 
     let key = key.clone();
     async move {
         let Some(user) = parts.extensions.get::<String>() else {
-            return Err(Unauthorized.into()); // 403: the client stops asking
+            return Err(Forbidden.into()); // 403: the client stops asking
         };
         let claims = ConnectionClaims::new(user, cent::Expiry::after(Duration::from_secs(3600)));
         Ok(token::connection(&key, &claims)?)
@@ -468,6 +535,11 @@ let connection_token = endpoints::Handlers::new().connection_token(move |parts| 
 });
 # Ok::<(), cent::token::TokenError>(())
 ```
+
+`endpoints::Forbidden`, also inside another error, answers 403: client SDKs
+stop asking, and report it as their `UnauthorizedError`. It is not the API
+client's `err.is_unauthorized()`, which means Centrifugo refused this
+backend's credentials. Any other error answers 500, which client SDKs retry.
 
 An expiry is required: `Expiry::At(time)`, or `Expiry::Never` for a token
 accepted forever, chosen explicitly. A connection token's `meta` is never shown

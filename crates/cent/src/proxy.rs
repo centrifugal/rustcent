@@ -23,7 +23,11 @@
 //! goes to `on_error` to be logged.
 //!
 //! Keep proxy endpoints reachable by Centrifugo only: whoever can call them
-//! can claim to be any user.
+//! can claim to be any user. Serve them on a network only Centrifugo reaches,
+//! or check, before the handler, a secret header Centrifugo adds to every
+//! proxy request - set it with the proxy's `static_headers` option - and use
+//! TLS where the traffic leaves a trusted network. The handler's body limit
+//! and the deadline it passes on are its own share of the protection.
 
 use std::fmt;
 use std::future::Future;

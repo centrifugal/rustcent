@@ -16,7 +16,7 @@ use super::TokenError;
 /// | Key | Algorithm | Centrifugo option |
 /// |---|---|---|
 /// | [`Key::hmac`] secret | HS256 | `client.token.hmac_secret_key` |
-/// | RSA private key | RS256 | `client.token.rsa_public_key` |
+/// | RSA private key, 2048 bits or more | RS256 | `client.token.rsa_public_key` |
 /// | ECDSA private key, P-256, P-384 or P-521 | ES256, ES384, ES512 | `client.token.ecdsa_public_key` |
 /// | Ed25519 private key | `EdDSA` | `client.token.ed25519_public_key` (Centrifugo v6.10.2+) |
 ///
@@ -86,9 +86,11 @@ impl Key {
         Ok(Self::of(Inner::Ed25519(pair)))
     }
 
-    /// Returns a key from a PEM-encoded private key: RSA (PKCS#1 or PKCS#8),
-    /// ECDSA on P-256, P-384 or P-521 (SEC1 or PKCS#8), or Ed25519 (PKCS#8).
-    /// The algorithm follows from the key. Other curves are refused.
+    /// Returns a key from a PEM-encoded private key: RSA of 2048 to 8192 bits
+    /// (PKCS#1 or PKCS#8), ECDSA on P-256, P-384 or P-521 (SEC1 or PKCS#8), or
+    /// Ed25519 (PKCS#8). The algorithm follows from the key. Other curves, and
+    /// RSA keys under 2048 bits, are refused, with the same error: 2048 is the
+    /// floor of NIST SP 800-131A and the default of key generators.
     pub fn from_pem(pem: impl AsRef<[u8]>) -> Result<Self, TokenError> {
         let der = PrivateKeyDer::from_pem_slice(pem.as_ref())
             .map_err(|e| TokenError::new(format!("reading a PEM private key: {e}")))?;
@@ -99,9 +101,11 @@ impl Key {
     pub fn from_der(der: &PrivateKeyDer<'_>) -> Result<Self, TokenError> {
         let unsupported = || {
             TokenError::new(
-                "an unsupported private key: want RSA, ECDSA on P-256, P-384 or P-521, or Ed25519",
+                "an unsupported private key: want RSA of 2048 to 8192 bits, ECDSA on P-256, P-384 or P-521, or Ed25519",
             )
         };
+        // aws-lc-rs refuses RSA keys outside 2048 to 8192 bits, so a small key
+        // fails here, where a key on another curve does (spec 11.1).
         let inner = match der {
             PrivateKeyDer::Pkcs1(k) => {
                 Inner::Rsa(RsaKeyPair::from_der(k.secret_pkcs1_der()).map_err(|_| unsupported())?)

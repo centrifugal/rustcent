@@ -225,6 +225,31 @@ fn jwks_refusals() {
     assert!(api(&keys[4].clone().with_key_id(""), &claims).is_err());
 }
 
+// Test keys refused: RSA of 1024 bits, PKCS#1 and PKCS#8, and ECDSA on
+// P-224, SEC1 and PKCS#8. Generated with openssl for these tests only.
+const RSA_1024_PKCS1: &str = "-----BEGIN RSA PRIVATE KEY-----\nMIICXQIBAAKBgQDlfgNomMPNbLQwDbAZxIZa1fDFe8s2hNuDVzp+Fr33UveeSXCj\nAYyyHKXEhinm88EzNJGWAmch7dTyNAhxclQpcW0Do+yP7kGAUo9Vq9TKHZs785sj\n0RjUz9CDDUX6IC0f8u38EywA8fL8CoVs+ur3n3P647vnBtItzORgJoIr4QIDAQAB\nAoGBAIK1bh2R/Nuw0UQZV7alb1ynQ7ZHFuwbaad59C/CpjoKwEwgSg4doNQFawju\n3UjUhrKye0U0Yyc4/bNhnXl4A6Rurzi7pGribVE9wUN0L5i2z4gIFMzvpA+uGWIt\nUrTGnvDK2qbVUgOCKH2kAgjSImJqbU4hrj12C35YRhZxfaNBAkEA/mDYAOMsVl92\n8CkikDJqgoYIeMx7MeiWwVlKSoPJTtNfdcaiN2S5zJkUxWomqyO7Bw7BbQNu15zi\nfQXgT49JGQJBAOb0jfAaOPoSatxpcTMxNIopZJ2C7dw6NlG5hOIUzF5oRmRRFgCr\nmVWswMxchpfn2d1J/H5WbdOPmgiBaBseqgkCQQDALJui9/zb990cDIePFnd+yhGG\naTy89LFHutQ0PSGNSoS4rmqInLD9T7zwc4RpEGJQL6aTW9+WRnCY8SKIGICpAkBq\nz20ZPrddB8l9+BHPMBFxWCVdJyEkOZPHhfnrqNy/SJBNcqavVq0KT2O234+rjyFV\n0xK/xu7x6ba9+kMQT8UpAkAcvBHo8fF+11fcnKiI51DlJCW0eqU491v1cmPP5yOX\ncSuu63/cwnaNWYAbwxYopIEBKbo3ocv83qxoUs3smiMV\n-----END RSA PRIVATE KEY-----\n";
+const RSA_1024_PKCS8: &str = "-----BEGIN PRIVATE KEY-----\nMIICdwIBADANBgkqhkiG9w0BAQEFAASCAmEwggJdAgEAAoGBAOV+A2iYw81stDAN\nsBnEhlrV8MV7yzaE24NXOn4WvfdS955JcKMBjLIcpcSGKebzwTM0kZYCZyHt1PI0\nCHFyVClxbQOj7I/uQYBSj1Wr1ModmzvzmyPRGNTP0IMNRfogLR/y7fwTLADx8vwK\nhWz66vefc/rju+cG0i3M5GAmgivhAgMBAAECgYEAgrVuHZH827DRRBlXtqVvXKdD\ntkcW7Btpp3n0L8KmOgrATCBKDh2g1AVrCO7dSNSGsrJ7RTRjJzj9s2GdeXgDpG6v\nOLukauJtUT3BQ3QvmLbPiAgUzO+kD64ZYi1StMae8MraptVSA4IofaQCCNIiYmpt\nTiGuPXYLflhGFnF9o0ECQQD+YNgA4yxWX3bwKSKQMmqChgh4zHsx6JbBWUpKg8lO\n0191xqI3ZLnMmRTFaiarI7sHDsFtA27XnOJ9BeBPj0kZAkEA5vSN8Bo4+hJq3Glx\nMzE0iilknYLt3Do2UbmE4hTMXmhGZFEWAKuZVazAzFyGl+fZ3Un8flZt04+aCIFo\nGx6qCQJBAMAsm6L3/Nv33RwMh48Wd37KEYZpPLz0sUe61DQ9IY1KhLiuaoicsP1P\nvPBzhGkQYlAvppNb35ZGcJjxIogYgKkCQGrPbRk+t10HyX34Ec8wEXFYJV0nISQ5\nk8eF+euo3L9IkE1ypq9WrQpPY7bfj6uPIVXTEr/G7vHptr36QxBPxSkCQBy8Eejx\n8X7XV9ycqIjnUOUkJbR6pTj3W/VyY8/nI5dxK67rf9zCdo1ZgBvDFiikgQEpujeh\ny/zerGhSzeyaIxU=\n-----END PRIVATE KEY-----\n";
+const P224_SEC1: &str = "-----BEGIN EC PRIVATE KEY-----\nMGgCAQEEHMsWHrcjAZ7hB9hD7FaiqvJuqQj0/nFchXtCNfWgBwYFK4EEACGhPAM6\nAATd1zPlr2KMYthx8lio2rV4OI8GStH8dcWbuAYI9zYfGf9LBZVtX1S6SrGVZBWl\nybPWXvQDALGTTA==\n-----END EC PRIVATE KEY-----\n";
+const P224_PKCS8: &str = "-----BEGIN PRIVATE KEY-----\nMHgCAQAwEAYHKoZIzj0CAQYFK4EEACEEYTBfAgEBBBzLFh63IwGe4QfYQ+xWoqry\nbqkI9P5xXIV7QjX1oTwDOgAE3dcz5a9ijGLYcfJYqNq1eDiPBkrR/HXFm7gGCPc2\nHxn/SwWVbV9UukqxlWQVpcmz1l70AwCxk0w=\n-----END PRIVATE KEY-----\n";
+
+/// Spec 11.1: an RSA key under 2048 bits is refused as an ECDSA key on another
+/// curve is, at the same point - building the `Key` - and with the same error.
+/// No `Key` exists for either, so neither signs a connection, subscription or
+/// API token, nor is published in a JWKS.
+#[test]
+fn small_rsa_refused_as_another_curve() {
+    let curve = Key::from_pem(P224_PKCS8).unwrap_err();
+    assert_eq!(
+        Key::from_pem(P224_SEC1).unwrap_err().to_string(),
+        curve.to_string()
+    );
+    for pem in [RSA_1024_PKCS1, RSA_1024_PKCS8] {
+        let err = Key::from_pem(pem).unwrap_err();
+        assert_eq!(err.to_string(), curve.to_string());
+        assert!(err.to_string().contains("RSA of 2048"), "{err}");
+    }
+}
+
 #[test]
 fn pem_keys() {
     let pem = "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC\n-----END PRIVATE KEY-----\n";

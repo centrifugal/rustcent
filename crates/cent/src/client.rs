@@ -22,7 +22,7 @@ use crate::{ApiError, BoxError, Error, Request};
 
 /// The `User-Agent` of requests: `<sdk>/<major>` (spec 3.2). Before 1.0 the
 /// minor version is the major one.
-pub(crate) const USER_AGENT_VALUE: &str = "rustcent/0.2";
+pub(crate) const USER_AGENT_VALUE: &str = "rustcent/0.3";
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_MAX_BATCH_SIZE: usize = 1000;

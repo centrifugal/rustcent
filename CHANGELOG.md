@@ -2,19 +2,22 @@
 
 Release notes are on the [releases page](https://github.com/centrifugal/rustcent/releases).
 
-## [0.3.0]
+## [0.2.1]
 
 Implements the [Centrifugo server SDK
 specification](https://github.com/centrifugal/gocent/blob/master/spec.md) 0.4.
+No behaviour changed: 0.4's new rules were already followed.
 
 ### Changed
 
-- **Breaking:** RSA keys under 2048 bits are refused: `Key::from_pem` and
-  `Key::from_der` fail with the `TokenError` an ECDSA key on another curve
-  gets, so no connection, subscription or API token is signed with one, and
-  none is published in a JWKS. 2048 bits is the floor of NIST SP 800-131A and
-  the default of key generators. A configuration with a smaller key, which
-  0.2.0 took, needs a new key.
+- Docs and the error message say that RSA keys under 2048 bits are refused,
+  as spec 0.4 requires: `Key::from_pem` and `Key::from_der` fail with the
+  `TokenError` an ECDSA key on another curve gets, as they did in 0.2.0,
+  since aws-lc-rs refuses such keys. A test pins it.
+- Docs: the ways to keep proxy endpoints reachable by Centrifugo only - a
+  network only Centrifugo reaches, a secret header from the proxy's
+  `static_headers` checked before the handler, TLS where the traffic leaves
+  a trusted network.
 
 ### Added
 
@@ -22,14 +25,7 @@ specification](https://github.com/centrifugal/gocent/blob/master/spec.md) 0.4.
   and concurrently waits for the calls in progress, a batch whose callers
   left is waited for, a broadcast retry stops at its next attempt with
   `Error::Closed`, a close whose deadline ends first returns its error and
-  the calls go on. No behaviour changed.
-
-### Fixed
-
-- Docs: the ways to keep proxy endpoints reachable by Centrifugo only - a
-  network only Centrifugo reaches, a secret header from the proxy's
-  `static_headers` checked before the handler, TLS where the traffic leaves
-  a trusted network.
+  the calls go on.
 
 ## [0.2.0]
 

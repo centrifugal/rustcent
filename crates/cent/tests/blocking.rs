@@ -164,13 +164,14 @@ fn close_waits_for_automatic_batches() {
             r#"{"result":{"offset":1}}"#.to_owned()
         })
     });
-    let (config, in_flight) = slow(&fake, Duration::from_millis(150));
+    let (config, in_flight) = slow(&fake, Duration::from_millis(500));
     let client = blocking::Client::new(config.auto_batch(AutoBatch::new(1))).unwrap();
     let c = client.clone();
     let first = std::thread::spawn(move || c.publish(publish(0)));
     std::thread::sleep(Duration::from_millis(30));
     // Queued: two whose callers stay, two who leave while their batch is
-    // on its way.
+    // on its way - after the first request ends at 500 ms, before the batch
+    // ends at 1000 ms: margins wide enough for a slow CI runner.
     let staying: Vec<_> = (1..=2)
         .map(|n| {
             let c = client.clone();
@@ -179,11 +180,11 @@ fn close_waits_for_automatic_batches() {
         .collect();
     let leaving: Vec<_> = (3..=4)
         .map(|n| {
-            let c = client.with_timeout(Duration::from_millis(200));
+            let c = client.with_timeout(Duration::from_millis(700));
             std::thread::spawn(move || c.publish(publish(n)))
         })
         .collect();
-    std::thread::sleep(Duration::from_millis(30));
+    std::thread::sleep(Duration::from_millis(100));
     client.close(Duration::from_secs(5)).unwrap();
     assert_eq!(in_flight.load(Ordering::SeqCst), 0, "close returned early");
     first.join().unwrap().unwrap();

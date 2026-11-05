@@ -1,3 +1,7 @@
+[default]
+# Base64 key material in PEM test keys.
+extend-ignore-re = ['MII[A-Za-z0-9+/=\\\\]{40,}']
+
 [default.extend-words]
 # Filter operator "not in" (api.proto).
 nin = "nin"

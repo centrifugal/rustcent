@@ -327,6 +327,53 @@ async fn close_waits_for_queued_calls_and_their_batch() {
     }
 }
 
+/// `close` waits for a batch in flight whose callers all left: they timed out
+/// while it was on its way, and it goes on for nobody.
+#[tokio::test]
+async fn close_waits_for_a_batch_whose_callers_left() {
+    let g = gate();
+    let client = Client::new(g.config(1)).unwrap();
+    let first = tokio::spawn({
+        let c = client.clone();
+        async move { c.publish(publish(100)).await }
+    });
+    settle().await;
+    // Queued behind the first call, sent as a batch when it ends, and left by
+    // their callers while the batch is held.
+    let queued: Vec<_> = (1..=2)
+        .map(|n| {
+            let c = client.with_timeout(Duration::from_millis(150));
+            tokio::spawn(async move { c.publish(publish(n)).await })
+        })
+        .collect();
+    settle().await;
+    g.open.add_permits(1);
+    first.await.unwrap().unwrap();
+    for q in queued {
+        let e = q.await.unwrap().unwrap_err();
+        assert!(e.is_timeout(), "{e:?}");
+    }
+    let reqs = g.fake.requests();
+    assert_eq!(
+        (reqs.len(), reqs[1].api_method.as_str()),
+        (2, "batch"),
+        "the queued calls went as one batch"
+    );
+    assert_eq!(g.in_flight.load(Ordering::SeqCst), 1, "the batch is held");
+    let close = tokio::spawn({
+        let c = client.clone();
+        async move { c.close(Duration::from_secs(5)).await }
+    });
+    settle().await;
+    assert!(
+        !close.is_finished(),
+        "close returned with the batch in flight"
+    );
+    g.open.add_permits(1);
+    close.await.unwrap().unwrap();
+    assert_eq!(g.in_flight.load(Ordering::SeqCst), 0);
+}
+
 /// Random concurrency: tasks making calls one after another, some timing out
 /// or being dropped, against a fake answering after a random wait. Every
 /// call gets its own reply, requests in flight never exceed the cap, and

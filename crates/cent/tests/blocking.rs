@@ -5,6 +5,8 @@
 
 mod common;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use cent::{
@@ -82,6 +84,156 @@ fn timeouts_and_close() {
             .unwrap_err()
             .is_timeout()
     );
+}
+
+/// A config whose requests each take `delay`, and the count of those in
+/// flight: a request is counted out however it ends.
+fn slow(fake: &Fake, delay: Duration) -> (cent::Config, Arc<AtomicUsize>) {
+    struct Counted(Arc<AtomicUsize>);
+    impl Drop for Counted {
+        fn drop(&mut self) {
+            self.0.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+    let inner = fake.client();
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let n = Arc::clone(&in_flight);
+    let http = move |req: http::Request<bytes::Bytes>| {
+        n.fetch_add(1, Ordering::SeqCst);
+        let counted = Counted(Arc::clone(&n));
+        let reply = cent::HttpClient::send(&inner, req);
+        async move {
+            let _counted = counted;
+            tokio::time::sleep(delay).await;
+            reply.await
+        }
+    };
+    (
+        cent::Config::new("http://centrifugo.test/api").http_client(http),
+        in_flight,
+    )
+}
+
+/// Spec 15's shutdown line for the blocking client: close called again and
+/// concurrently waits for the call in progress, a close whose deadline ends
+/// first returns its error and the call goes on.
+#[test]
+fn close_again_concurrently_and_its_deadline() {
+    let fake = Fake::centrifugo();
+    let (config, in_flight) = slow(&fake, Duration::from_millis(200));
+    let client = blocking::Client::new(config).unwrap();
+    let c = client.clone();
+    let in_progress = std::thread::spawn(move || c.info(InfoRequest::new()));
+    std::thread::sleep(Duration::from_millis(30));
+    assert!(
+        client
+            .close(Duration::from_millis(10))
+            .unwrap_err()
+            .is_timeout()
+    );
+    assert_eq!(in_flight.load(Ordering::SeqCst), 1, "the call goes on");
+    let closes: Vec<_> = (0..4)
+        .map(|_| {
+            let (c, n) = (client.clone(), Arc::clone(&in_flight));
+            std::thread::spawn(move || {
+                c.close(Duration::from_secs(5)).unwrap();
+                assert_eq!(n.load(Ordering::SeqCst), 0, "close returned early");
+            })
+        })
+        .collect();
+    for c in closes {
+        c.join().unwrap();
+    }
+    in_progress.join().unwrap().unwrap();
+    assert!(matches!(
+        client.info(InfoRequest::new()),
+        Err(Error::Closed)
+    ));
+}
+
+/// Calls queued for an automatic batch are still sent after close, and a
+/// batch whose callers left is waited for.
+#[test]
+fn close_waits_for_automatic_batches() {
+    let fake = Fake::new(|r| {
+        ok(&if r.api_method == "batch" {
+            let n = r.body["commands"].as_array().unwrap().len();
+            serde_json::json!({ "replies": vec![serde_json::json!({"publish": {"offset": 1}}); n] })
+                .to_string()
+        } else {
+            r#"{"result":{"offset":1}}"#.to_owned()
+        })
+    });
+    let (config, in_flight) = slow(&fake, Duration::from_millis(500));
+    let client = blocking::Client::new(config.auto_batch(AutoBatch::new(1))).unwrap();
+    let c = client.clone();
+    let first = std::thread::spawn(move || c.publish(publish(0)));
+    std::thread::sleep(Duration::from_millis(30));
+    // Queued: two whose callers stay, two who leave while their batch is
+    // on its way - after the first request ends at 500 ms, before the batch
+    // ends at 1000 ms: margins wide enough for a slow CI runner.
+    let staying: Vec<_> = (1..=2)
+        .map(|n| {
+            let c = client.clone();
+            std::thread::spawn(move || c.publish(publish(n)))
+        })
+        .collect();
+    let leaving: Vec<_> = (3..=4)
+        .map(|n| {
+            let c = client.with_timeout(Duration::from_millis(700));
+            std::thread::spawn(move || c.publish(publish(n)))
+        })
+        .collect();
+    std::thread::sleep(Duration::from_millis(100));
+    client.close(Duration::from_secs(5)).unwrap();
+    assert_eq!(in_flight.load(Ordering::SeqCst), 0, "close returned early");
+    first.join().unwrap().unwrap();
+    for t in staying {
+        t.join().unwrap().unwrap();
+    }
+    for t in leaving {
+        assert!(t.join().unwrap().unwrap_err().is_timeout());
+    }
+    let methods: Vec<String> = fake
+        .requests()
+        .iter()
+        .map(|r| r.api_method.clone())
+        .collect();
+    assert_eq!(methods, ["publish", "batch"]);
+}
+
+/// A broadcast retry stops at its next attempt after close, with `Closed`.
+#[test]
+fn close_stops_a_broadcast_retry() {
+    let fake = Fake::new(|r| {
+        let n = r.body["channels"].as_array().map_or(0, Vec::len);
+        let failed =
+            serde_json::json!({"error": {"code": 100, "message": "failed", "temporary": true}});
+        ok(&serde_json::json!({"result": {"responses": vec![failed; n]}}).to_string())
+    });
+    let client = blocking::Client::new(fake.config()).unwrap();
+    let closer = Arc::new(Mutex::new(None));
+    let (c, cl) = (client.clone(), Arc::clone(&closer));
+    let e = client
+        .broadcast_with_retry(
+            BroadcastRequest::new(["a"]).data(raw("1")),
+            BroadcastRetryOptions::default()
+                .max_attempts(10)
+                .on_attempt_error(move |_| {
+                    let c = c.clone();
+                    *cl.lock().unwrap() =
+                        Some(std::thread::spawn(move || c.close(Duration::from_secs(5))));
+                    cent::Retry::After(Duration::from_millis(100))
+                }),
+        )
+        .unwrap_err();
+    let res = e.broadcast_result().unwrap();
+    assert!(res.attempts <= 2, "{} attempts after close", res.attempts);
+    assert!(matches!(res.channels[0].result, Err(Error::Closed)));
+    assert!(!cent::retryable(&e));
+    assert_eq!(fake.requests().len(), 1);
+    let closer = closer.lock().unwrap().take().unwrap();
+    closer.join().unwrap().unwrap();
 }
 
 #[test]

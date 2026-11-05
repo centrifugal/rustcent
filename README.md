@@ -33,7 +33,7 @@ cargo add cent
 
 cent implements the [Centrifugo server SDK
 specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-version 0.3, whose reference implementation is
+version 0.4, whose reference implementation is
 [gocent](https://github.com/centrifugal/gocent).
 
 ## Example
@@ -507,8 +507,14 @@ Return a result to accept the request, a `proxy::Error` - a code in
 `proxy::Disconnect` - a code in [4000, 4999], those in [4500, 4999] telling the
 client not to reconnect, and a reason of at most 32 bytes - to close the
 client's connection. Any other error, which `?` turns into a rejection, fails
-the request with 500 and goes to `on_error` to be logged. Keep proxy endpoints
-reachable by Centrifugo only: whoever can call them can claim to be any user.
+the request with 500 and goes to `on_error` to be logged.
+
+Keep proxy endpoints reachable by Centrifugo only: whoever can call them can
+claim to be any user. Serve them on a network only Centrifugo reaches, or check,
+before the handler, a secret header Centrifugo adds to every proxy request - set
+it with the proxy's `static_headers` option - and use TLS where the traffic
+leaves a trusted network. The handler's body limit and the deadline it passes
+on are its own share of the protection.
 
 ## Tokens
 
@@ -547,12 +553,12 @@ to other clients, but the user owning the token can read it: put nothing in it
 that user must not see. `subscription_token` serves subscription tokens the same
 way, with the channel the client asks for.
 
-With RSA, ECDSA or Ed25519 keys - `Key::from_pem`, `Key::ed25519` -
-`endpoints::jwks(&keys)` publishes the public keys for Centrifugo's
-`jwks_public_endpoint`: the way to rotate keys without restarting Centrifugo.
-Publish a new key next to the old one; sign with it only once every instance
-of the application publishes it - from an activation time set ahead, or in a
-second deploy; drop the old key once its tokens expired. Never give a key's ID
+With RSA (2048 bits or more), ECDSA or Ed25519 keys - `Key::from_pem`,
+`Key::ed25519` - `endpoints::jwks(&keys)` publishes the public keys for
+Centrifugo's `jwks_public_endpoint`: the way to rotate keys without
+restarting Centrifugo. Publish a new key next to the old one; sign with it only
+once every instance of the application publishes it - from an activation time
+set ahead, or in a second deploy; drop the old key once its tokens expired. Never give a key's ID
 to another key: Centrifugo caches keys by ID. The `backend` example rotates by
 activation time.
 

@@ -289,6 +289,42 @@ async fn retry_until_success_and_stops() {
     }
 }
 
+/// `close` during a broadcast retry: the retry stops at its next attempt,
+/// which fails with `Closed`, and is not retried.
+#[tokio::test]
+async fn close_stops_a_retry_at_its_next_attempt() {
+    let fake = fake_broadcast(|_, _| Err((100, true)));
+    let client = Client::new(fake.config()).unwrap();
+    let closed = Arc::new(Mutex::new(None));
+    let (c, cl) = (client.clone(), Arc::clone(&closed));
+    let e = client
+        .broadcast_with_retry(
+            broadcast(&["a"]),
+            BroadcastRetryOptions::default()
+                .max_attempts(10)
+                .on_attempt_error(move |_| {
+                    let c = c.clone();
+                    *cl.lock().unwrap() = Some(tokio::spawn(async move {
+                        c.close(Duration::from_secs(5)).await
+                    }));
+                    Retry::After(Duration::from_millis(50))
+                }),
+        )
+        .await
+        .unwrap_err();
+    let res = e.broadcast_result().unwrap();
+    assert!(res.attempts <= 2, "{} attempts after close", res.attempts);
+    assert!(
+        matches!(res.channels[0].result, Err(Error::Closed)),
+        "{:?}",
+        res.channels[0].result
+    );
+    assert!(!retryable(&e));
+    assert_eq!(fake.requests().len(), 1);
+    let close = closed.lock().unwrap().take().unwrap();
+    close.await.unwrap().unwrap();
+}
+
 #[tokio::test]
 async fn retries_end_with_the_deadline() {
     // Each attempt hangs; attempt_timeout bounds it, the call's deadline all.

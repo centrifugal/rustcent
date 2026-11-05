@@ -804,6 +804,57 @@ async fn close_refuses_new_calls_and_waits_for_those_in_progress() {
     in_progress.await.unwrap().unwrap();
 }
 
+/// `close` called again, and concurrently: each call waits for the call in
+/// progress, as the first did - also after a close whose deadline ended.
+#[tokio::test]
+async fn close_called_again_and_concurrently_waits_alike() {
+    let fake = Fake::new(|_| ok(r#"{"result":{"offset":1}}"#));
+    let inner = fake.client();
+    // Holds each request until the test lets it go.
+    let open = Arc::new(tokio::sync::Semaphore::new(0));
+    let gate = Arc::clone(&open);
+    let http = move |req: http::Request<bytes::Bytes>| {
+        let gate = Arc::clone(&gate);
+        let reply = cent::HttpClient::send(&inner, req);
+        async move {
+            gate.acquire().await.unwrap().forget();
+            reply.await
+        }
+    };
+    let client = Client::new(Config::new("http://centrifugo.test/api").http_client(http)).unwrap();
+    let c = client.clone();
+    let in_progress = tokio::spawn(async move { c.publish(publish()).await });
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(
+        client
+            .close(Duration::from_millis(10))
+            .await
+            .unwrap_err()
+            .is_timeout()
+    );
+    let closes: Vec<_> = (0..4)
+        .map(|_| {
+            let c = client.clone();
+            tokio::spawn(async move { c.close(Duration::from_secs(5)).await })
+        })
+        .collect();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        closes.iter().all(|c| !c.is_finished()) && !in_progress.is_finished(),
+        "a close returned before the call in progress ended"
+    );
+    open.add_permits(1);
+    for c in closes {
+        c.await.unwrap().unwrap();
+    }
+    assert_eq!(in_progress.await.unwrap().unwrap(), PublishResultEq(1));
+    assert!(matches!(
+        client.publish(publish()).await,
+        Err(Error::Closed)
+    ));
+    assert_eq!(fake.requests().len(), 1);
+}
+
 /// Compares a publish result by offset.
 #[derive(Debug)]
 struct PublishResultEq(u64);

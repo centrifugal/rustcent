@@ -310,7 +310,11 @@ impl Handlers {
         /// The connect proxy: `f` authenticates a connecting client, and
         /// returns its user and initial state. An [`Error`] rejects the
         /// connection; a [`Disconnect`] closes it.
-        connect, "connect", ConnectRequest, ConnectResult, Answers::All
+        connect,
+        "connect",
+        ConnectRequest,
+        ConnectResult,
+        Answers::All
     );
 
     proxy_handler!(
@@ -319,27 +323,43 @@ impl Handlers {
         /// with `expired` set. Any [`Rejection`] fails the request - Centrifugo
         /// ignores an error or a disconnect in a refresh response - and
         /// Centrifugo keeps the connection a minute longer before asking again.
-        refresh, "refresh", RefreshRequest, RefreshResult, Answers::ResultOnly
+        refresh,
+        "refresh",
+        RefreshRequest,
+        RefreshResult,
+        Answers::ResultOnly
     );
 
     proxy_handler!(
         /// The subscribe proxy: `f` decides whether a client may subscribe to
         /// a channel. An [`Error`] rejects the subscription; a [`Disconnect`]
         /// closes the connection.
-        subscribe, "subscribe", SubscribeRequest, SubscribeResult, Answers::All
+        subscribe,
+        "subscribe",
+        SubscribeRequest,
+        SubscribeResult,
+        Answers::All
     );
 
     proxy_handler!(
         /// The publish proxy: `f` decides whether a client may publish into a
         /// channel, and may change the publication. An [`Error`] rejects the
         /// publication; a [`Disconnect`] closes the connection.
-        publish, "publish", PublishRequest, PublishResult, Answers::All
+        publish,
+        "publish",
+        PublishRequest,
+        PublishResult,
+        Answers::All
     );
 
     proxy_handler!(
         /// The RPC proxy: `f` answers a client's RPC call. An [`Error`] fails
         /// the call; a [`Disconnect`] closes the connection.
-        rpc, "rpc", RpcRequest, RpcResult, Answers::All
+        rpc,
+        "rpc",
+        RpcRequest,
+        RpcResult,
+        Answers::All
     );
 
     proxy_handler!(
@@ -348,21 +368,33 @@ impl Handlers {
         /// result with `expired` set. Any [`Rejection`] fails the request, and
         /// Centrifugo keeps the subscription a minute longer before asking
         /// again.
-        sub_refresh, "sub refresh", SubRefreshRequest, SubRefreshResult, Answers::ResultOnly
+        sub_refresh,
+        "sub refresh",
+        SubRefreshRequest,
+        SubRefreshResult,
+        Answers::ResultOnly
     );
 
     proxy_handler!(
         /// The map publish proxy: `f` decides whether a client may publish a
         /// key into a map channel, and may change the publication. An
         /// [`Error`] rejects it; a [`Disconnect`] closes the connection.
-        map_publish, "map publish", MapPublishRequest, MapPublishResult, Answers::All
+        map_publish,
+        "map publish",
+        MapPublishRequest,
+        MapPublishResult,
+        Answers::All
     );
 
     proxy_handler!(
         /// The map remove proxy: `f` decides whether a client may remove a key
         /// from a map channel. An [`Error`] rejects it; a [`Disconnect`]
         /// closes the connection.
-        map_remove, "map remove", MapRemoveRequest, MapRemoveResult, Answers::All
+        map_remove,
+        "map remove",
+        MapRemoveRequest,
+        MapRemoveResult,
+        Answers::All
     );
 
     proxy_handler!(
@@ -370,7 +402,11 @@ impl Handlers {
         /// items tracked in a shared poll channel. An [`Error`], or any other
         /// rejection, fails the refresh: Centrifugo tries again at the next
         /// interval.
-        shared_poll_refresh, "shared poll refresh", SharedPollRefreshRequest, SharedPollRefreshResult, Answers::ErrorOrResult
+        shared_poll_refresh,
+        "shared poll refresh",
+        SharedPollRefreshRequest,
+        SharedPollRefreshResult,
+        Answers::ErrorOrResult
     );
 
     proxy_handler!(
@@ -380,13 +416,21 @@ impl Handlers {
         /// `populated` set, for Centrifugo to recover once more. Any
         /// [`Rejection`] fails the request, and the client is disconnected to
         /// reconnect.
-        notify_cache_empty, "cache empty", NotifyCacheEmptyRequest, NotifyCacheEmptyResult, Answers::ResultOnly
+        notify_cache_empty,
+        "cache empty",
+        NotifyCacheEmptyRequest,
+        NotifyCacheEmptyResult,
+        Answers::ResultOnly
     );
 
     proxy_handler!(
         /// The channel state proxy of Centrifugo PRO, in preview: `f` receives
         /// channels becoming occupied or vacated. Any [`Rejection`] fails the
         /// request.
-        notify_channel_state, "channel state", NotifyChannelStateRequest, NotifyChannelStateResult, Answers::ErrorOrResult
+        notify_channel_state,
+        "channel state",
+        NotifyChannelStateRequest,
+        NotifyChannelStateResult,
+        Answers::ErrorOrResult
     );
 }

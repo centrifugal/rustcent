@@ -24,6 +24,13 @@ cargo deny check                                           # cargo install cargo
 typos                                                      # cargo install typos-cli
 ```
 
+CI runs rustfmt and clippy on the Rust release that `LINT_TOOLCHAIN` in
+`.github/workflows/ci.yml` names, not on the latest stable, so that a new
+release cannot fail every pull request by reformatting code or adding lints.
+To match CI, run `cargo +<that version> fmt` and `clippy`. To move to a newer
+release, change `LINT_TOOLCHAIN` in a pull request of its own, together with
+whatever the new rustfmt reformats and the new clippy warns on.
+
 ### Test servers
 
 Most tests need no server: they run against a fake Centrifugo
